@@ -85,7 +85,19 @@ Three-layer split, deliberately decoupled from VS Code:
   model when the target's core, `inc/`, `lib/`, or `help/` change; debounces
   re-analysis on text edits (300 ms) and model reloads (1 s). Holds an
   `analyses` cache keyed by document URI + version so repeated provider
-  calls for the same edit don't re-scan.
+  calls for the same edit don't re-scan. Also owns `vforth.pushToSD`
+  (phase 2): a manual, single-file "push to the CSpect SD image" command
+  that shells out to `hdfmonkey put` (`vforth.hdfmonkeyPath`, default on
+  `PATH`) against `vforth.sdImage`. `hdfmonkey` writes into the HDF/FAT
+  image directly, unlike mounting it with imdisk, so it needs no exclusive
+  lock and works while CSpect is running — that is the reason this exists
+  instead of driving the project's own `util/sync2sd.ps1` (which requires
+  CSpect and MAME both closed) for the single-file edit/test loop. No
+  `REMOUNT` cycle is needed either (unlike `hdfm-gooey`): reads and writes
+  both work at any time, CSpect open or closed, and a running vForth
+  session sees a pushed file immediately — verified against the real image
+  and a live CSpect (a REMOUNT requirement was first suspected, then
+  disproved by controlled negative/positive tests, see project memory).
 
 - **`build/vforth-build.pl`** — offline generator, not run by the extension
   at runtime. Reads the same `RENAME` table from the target's `src/F18e.f`

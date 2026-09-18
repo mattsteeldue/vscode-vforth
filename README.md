@@ -55,8 +55,12 @@ Known limits: numbers in a `BASE` set by other means are not recognised
 | Setting | Default | Meaning |
 |---|---|---|
 | `vforth.root` | `""` | vForth root (holds `src/F18e.f`). Empty: auto-detect. |
-| `vforth.preloaded` | `[]` | `NEEDS` arguments assumed already loaded, e.g. by AUTOEXEC. |
+| `vforth.preloaded` | `[]` | `NEEDS` arguments assumed already loaded before any file is opened. Empty by default: AUTOEXEC is self-cleaning (it `MARKER`s away whatever it defines for the splash screen), so nothing from it persists in the dictionary — there is no sensible non-empty default. Set this only if your own workflow loads extra utilities by hand before editing. |
 | `vforth.diagnostics.enable` | `true` | Enable diagnostics. |
+| `vforth.sdImage` | `""` | CSpect SD image (`.img`) path, for *vForth: Push file to SD image*. |
+| `vforth.hdfmonkeyPath` | `"hdfmonkey"` | Path to the `hdfmonkey` executable. |
+| `vforth.sdDestPrefix` | `""` | Prefix prepended, inside the image, to the file's path relative to `vforth.root` (e.g. `"tools/vForth"`). |
+| `vforth.sdExcludeTopDirs` | `["dev","doc","dot","emu","forum","project","prompts","tools","version"]` | Top-level directories not normally deployed to the SD card; pushing from one asks for confirmation. |
 
 For `.f` files the extension sets UTF-8 (identical to ASCII for 7-bit
 text), LF line endings and whitespace-only word separators, so that a
@@ -104,4 +108,20 @@ If another extension (e.g. a Fortran one) also claims `.f`, pin it:
 "files.associations": { "*.f": "vforth" }
 ```
 
-Commands: *vForth: Reload index*, *vForth: Show log*.
+Commands: *vForth: Reload index*, *vForth: Show log*, *vForth: Push file to SD image*.
+
+## Push file to SD image
+
+Writes the active file onto the CSpect SD image with `hdfmonkey put`, so an
+edited `.f` file can be tested without leaving VS Code. Unlike mounting the
+image with imdisk (as `W:`, e.g. for a full-tree sync), `hdfmonkey` writes
+into the HDF/FAT image directly and needs no exclusive lock, so it works
+while CSpect is running — only pushing a single file, not a general
+replacement for a full sync. It is a manual command (bind it to a key of
+your choice); nothing is pushed automatically on save. Set `vforth.sdImage`
+(and `vforth.hdfmonkeyPath` if `hdfmonkey` is not on `PATH`) first.
+
+No `REMOUNT` cycle is needed, unlike with `hdfm-gooey`: reads and writes
+both work at any time, CSpect open or closed, and a running vForth session
+sees a pushed file immediately (`NEEDS`/`INCLUDE` right after the push) —
+verified against a real image and a live CSpect session.

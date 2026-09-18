@@ -6,6 +6,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 const { Model, CORE_SOURCE } = require('./src/model');
 
 const LANG = 'vforth';
@@ -227,6 +228,51 @@ const semanticProvider = {
   }
 };
 
+// ------------------------------------------------------------------ deploy
+// Pushes the active file onto the CSpect SD image with hdfmonkey, which
+// writes directly into the HDF/FAT image without the exclusive lock an
+// imdisk mount would need, and without needing CSpect's REMOUNT cycle
+// either (unlike hdfm-gooey): reads and writes both work at any time,
+// CSpect open or closed, and an open vForth session sees the change
+// immediately - verified against the real image and a live CSpect.
+async function pushToSD() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) { vscode.window.showWarningMessage('vForth: no active file to push.'); return; }
+  if (!model) { vscode.window.showWarningMessage('vForth root not found; set "vforth.root".'); return; }
+
+  const doc = editor.document;
+  if (doc.uri.scheme !== 'file') { vscode.window.showWarningMessage('vForth: active file is not a local file.'); return; }
+  const rel = path.relative(model.root, doc.uri.fsPath).split(path.sep).join('/');
+  if (rel.startsWith('..')) { vscode.window.showWarningMessage('vForth: active file is not under vforth.root.'); return; }
+
+  const sdImage = (config().get('sdImage') || '').trim();
+  if (!sdImage) { vscode.window.showErrorMessage('vForth: set "vforth.sdImage" to the CSpect SD image (.img) path first.'); return; }
+  const hdfmonkeyPath = (config().get('hdfmonkeyPath') || 'hdfmonkey').trim();
+  const destPrefix = (config().get('sdDestPrefix') || '').trim().replace(/^\/+|\/+$/g, '');
+  const excludeTopDirs = config().get('sdExcludeTopDirs') || [];
+
+  const top = rel.split('/')[0];
+  if (excludeTopDirs.includes(top)) {
+    const choice = await vscode.window.showWarningMessage(
+      `vForth: "${top}/" is not normally deployed to the SD card (see vforth.sdExcludeTopDirs). Push "${rel}" anyway?`,
+      { modal: true }, 'Push anyway');
+    if (choice !== 'Push anyway') return;
+  }
+
+  if (doc.isDirty) await doc.save();
+
+  const destPath = destPrefix ? `${destPrefix}/${rel}` : rel;
+  execFile(hdfmonkeyPath, ['put', sdImage, doc.uri.fsPath, destPath], (err, stdout, stderr) => {
+    if (err) {
+      log(`push ${rel} -> ${destPath}: FAILED\n${stderr || err.message}`);
+      vscode.window.showErrorMessage(`vForth: push failed (${err.message}). See "vForth: Show log".`);
+      return;
+    }
+    log(`push ${rel} -> ${destPath}: ok${stdout ? '\n' + stdout : ''}`);
+    vscode.window.setStatusBarMessage(`vForth: pushed ${rel} to SD image`, 4000);
+  });
+}
+
 // ------------------------------------------------------------------ activation
 async function activate(context) {
   output = vscode.window.createOutputChannel('vForth');
@@ -256,7 +302,8 @@ async function activate(context) {
       await loadModel(); refreshAll();
       vscode.window.showInformationMessage(model ? `vForth index reloaded (${model.root})` : 'vForth root not found');
     }),
-    vscode.commands.registerCommand('vforth.showLog', () => output.show())
+    vscode.commands.registerCommand('vforth.showLog', () => output.show()),
+    vscode.commands.registerCommand('vforth.pushToSD', pushToSD)
   );
   setupWatcher(context);
   refreshAll();

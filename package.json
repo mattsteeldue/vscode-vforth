@@ -42,7 +42,8 @@
     ],
     "commands": [
       { "command": "vforth.reloadIndex", "title": "vForth: Reload index" },
-      { "command": "vforth.showLog", "title": "vForth: Show log" }
+      { "command": "vforth.showLog", "title": "vForth: Show log" },
+      { "command": "vforth.pushToSD", "title": "vForth: Push file to SD image" }
     ],
     "configuration": {
       "title": "vForth",
@@ -56,12 +57,33 @@
           "type": "array",
           "items": { "type": "string" },
           "default": [],
-          "description": "NEEDS arguments assumed already executed before any file is loaded (e.g. what AUTOEXEC loads)."
+          "description": "NEEDS arguments assumed already executed before any file is loaded. Empty by default: AUTOEXEC is self-cleaning (it MARKERs away what it defines for the splash screen), so nothing from it persists in the dictionary. Set this only if your own workflow loads extra utilities by hand first."
         },
         "vforth.diagnostics.enable": {
           "type": "boolean",
           "default": true,
           "description": "Report words that require NEEDS, unresolvable NEEDS/INCLUDE and non-ASCII characters."
+        },
+        "vforth.sdImage": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the CSpect SD card image (.img) used by 'vForth: Push file to SD image'."
+        },
+        "vforth.hdfmonkeyPath": {
+          "type": "string",
+          "default": "hdfmonkey",
+          "description": "Path to the hdfmonkey executable. hdfmonkey writes into the HDF/FAT image directly, so it works without an exclusive lock (unlike mounting the image with imdisk), i.e. while CSpect is running."
+        },
+        "vforth.sdDestPrefix": {
+          "type": "string",
+          "default": "",
+          "description": "Prefix prepended, inside the SD image, to a file's path relative to vforth.root (e.g. \"tools/vForth\" if that is where your SD mirrors the project). Empty: the path relative to vforth.root is used as-is."
+        },
+        "vforth.sdExcludeTopDirs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["dev", "doc", "dot", "emu", "forum", "project", "prompts", "tools", "version"],
+          "description": "Top-level directories (relative to vforth.root) not normally deployed to the SD card. Pushing a file under one of these asks for confirmation first."
         }
       }
     },

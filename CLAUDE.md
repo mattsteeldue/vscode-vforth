@@ -111,7 +111,29 @@ Three-layer split, deliberately decoupled from VS Code:
   clear line/column message rather than writing corrupted or truncated
   content. `editor.rulers: [64]` (via `configurationDefaults["[vforth-screen]"]`)
   and a `screenBottomBorder` decoration under line 16 mark the Screen's
-  bounds.
+  bounds. `vforth.openBlock` is the same idea at Block granularity (512
+  bytes, `(block-1)*512` offset) but raw, with no text layer or
+  validation beyond the byte count staying exactly 512 — for non-source
+  blocks (graphics, `PERSISTENCE` snapshots, the message table) the Screen
+  editor cannot open. It delegates the actual editing UI to the Microsoft
+  Hex Editor extension (`ms-vscode.hexeditor`, offered for install if
+  missing) via `vscode.openWith`, rather than building a hex UI in this
+  extension — same reasoning as reusing the native text editor for
+  Screens instead of a custom grid. `vforth.nextScreenOrBlock` /
+  `vforth.previousScreenOrBlock` (`Ctrl+Shift+F8` / `Ctrl+Shift+F7`,
+  scoped via a `resourceScheme` `when` clause) step to the adjacent Screen
+  or Block and close the old tab, via `activeUriByScheme()` — checks
+  `activeTextEditor` first (Screens), then the active tab's `input.uri`
+  (Blocks: a custom editor has no `TextEditor` to read from at all). Two
+  earlier key choices both leaked through to a live VS Code default while
+  a Hex Editor webview had focus, because the `when` clause does not
+  reliably scope in that case: `Ctrl+Shift+N`/`Ctrl+Shift+B` (New Window)
+  and `Ctrl+Alt+Right`/`Ctrl+Alt+Left` (Move Editor into Next/Previous
+  Group — a real default, confirmed wrong when assumed free; `AltGr` was
+  also considered and rejected, since on Windows it is normally reported
+  as that same `Ctrl+Alt` combination, not a distinct modifier VS Code's
+  keybinding format can target). `Ctrl+Shift+F7`/`F8` is what the user
+  picked and confirmed free — don't revert to either earlier pair.
 
 - **`build/vforth-build.pl`** — offline generator, not run by the extension
   at runtime. Reads the same `RENAME` table from the target's `src/F18e.f`

@@ -111,6 +111,21 @@ node test/selftest.js <vForth root> [file.f ...]
 node test/sweep.js <vForth root>
 ```
 
+## Requirements
+
+No compilation and no npm dependencies are needed to run this extension
+itself (plain JavaScript). Two external tools are needed for the CSpect SD
+image features specifically, not for language support (highlighting,
+diagnostics, hover, go to definition, outline):
+
+- [`hdfmonkey`](https://github.com/simonowen/hdfmonkey) — required by
+  *Push file to SD image*, *Open Screen #* and *Open Block # (hex)*. Set
+  `vforth.hdfmonkeyPath` to its executable unless it is already on `PATH`.
+- [Hex Editor](https://marketplace.visualstudio.com/items?itemName=ms-vscode.hexeditor)
+  (`ms-vscode.hexeditor`) — required only by *Open Block # (hex)*, which
+  delegates the actual byte-level editing UI to it. *Open Block #* offers
+  to install it for you if it is missing.
+
 ## Install
 
 No compilation is required (plain JavaScript, no dependencies). Either copy
@@ -124,7 +139,7 @@ If another extension (e.g. a Fortran one) also claims `.f`, pin it:
 "files.associations": { "*.f": "vforth" }
 ```
 
-Commands: *vForth: Reload index*, *vForth: Show log*, *vForth: Push file to SD image*, *vForth: Open Screen #*.
+Commands: *vForth: Reload index*, *vForth: Show log*, *vForth: Push file to SD image*, *vForth: Open Screen #*, *vForth: Open Block # (hex)*, *vForth: Next Screen/Block* (`Ctrl+Shift+F8`), *vForth: Previous Screen/Block* (`Ctrl+Shift+F7`).
 
 ## Push file to SD image
 
@@ -166,3 +181,43 @@ concurrent writes to *other* blocks from inside CSpect during the narrow
 read-modify-write window could in principle be lost, since the whole file
 is read, patched locally and written back whole — not just observed in
 testing, but a structural possibility worth knowing about.
+
+## Open Block # (hex)
+
+Opens a single Block (512 bytes, half a Screen) from `!Blocks-64.bin` as
+raw bytes in the [Hex Editor](https://marketplace.visualstudio.com/items?itemName=ms-vscode.hexeditor)
+extension — prompts to install it if missing. Unlike *Open Screen #*,
+there is no text decoding or ASCII validation: any byte value is valid, so
+this is the way to inspect/edit a Block that is not vForth source (a
+Layer 2 image, a sprite table, a `PERSISTENCE` snapshot, the error-message
+table) that the 16x64 text editor cannot open. Saving requires the byte
+count to stay exactly 512, same reasoning as for Screens: the file size on
+the image must never change. Same read/write mechanics as *Open Screen #*
+(whole 16 MB round trip through `hdfmonkey` on every open/save).
+
+## Next/Previous Screen or Block
+
+With a Screen or Block editor active, `Ctrl+Shift+F8` / `Ctrl+Shift+F7`
+open the next/previous one, replacing the current tab. The two commands
+act on whichever of the two is active (checked by resource scheme, so this
+covers Screens as plain text editors and Blocks as a custom editor — Hex
+Editor — which has no text editor to query); outside a Screen/Block editor
+they do nothing (a warning explains why).
+
+The keybindings carry a `when` clause scoping them to those two editors,
+but that scoping is not reliable while a Hex Editor webview has focus. Two
+earlier choices both leaked through to a VS Code default while a Hex
+Editor webview was focused: `Ctrl+Shift+N`/`Ctrl+Shift+B` opened a new
+window, and `Ctrl+Alt+Right`/`Ctrl+Alt+Left` moved the editor into the
+next/previous group (also a real default, not a free combination as first
+assumed — and on Windows `AltGr` is normally reported as that same
+`Ctrl+Alt` combination, so it would not have avoided the collision
+either). `Ctrl+Shift+F7`/`Ctrl+Shift+F8` were picked next and confirmed
+free. Rebind them from *Keyboard Shortcuts* if they ever clash with
+something else in your setup.
+
+Stepping Block-to-Block also needs the previous Hex Editor tab closed
+*before* the next one opens, not after — otherwise the newly opened Hex
+Editor webview is left without keyboard focus (it takes a manual click
+before the keys work again). `openBlock()` closes first and opens last,
+and passes `preserveFocus: false` explicitly, for that reason.

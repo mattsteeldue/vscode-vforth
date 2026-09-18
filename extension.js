@@ -392,15 +392,140 @@ function updateScreenDecoration(editor) {
   editor.setDecorations(screenBottomBorder, [editor.document.lineAt(last).range]);
 }
 
-async function openScreen() {
+// ------------------------------------------------------------------ blocks (raw hex)
+// A Block (512 bytes, half a Screen) from !Blocks-64.bin, opened as raw
+// bytes through the same hdfmonkey get/put round trip as Screens, but with
+// no text encode/decode or validation - meant for non-text blocks
+// (graphics, PERSISTENCE snapshots, the message table) that the Screen
+// text editor cannot touch (it rejects non-ASCII bytes on save). Editing
+// itself is delegated to the Hex Editor extension (ms-vscode.hexeditor),
+// not a custom hex UI, the same way Screens reuse the native text editor.
+const BLOCK_SCHEME = 'vforth-block';
+const BLOCK_SIZE = 512;
+const HEX_EDITOR_EXT = 'ms-vscode.hexeditor';
+const blockFSEmitter = new vscode.EventEmitter();
+
+function blockNumberOf(uri) {
+  const m = /(\d+)/.exec(uri.path);
+  if (!m) throw vscode.FileSystemError.FileNotFound(uri);
+  return parseInt(m[1], 10);
+}
+
+function blockOffset(b) { return (b - 1) * BLOCK_SIZE; }
+
+const blockFS = {
+  onDidChangeFile: blockFSEmitter.event,
+  watch() { return new vscode.Disposable(() => {}); },
+  stat() { return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: BLOCK_SIZE }; },
+  readDirectory() { return []; },
+  createDirectory() {},
+  async readFile(uri) {
+    const b = blockNumberOf(uri);
+    const offset = blockOffset(b);
+    const tmp = await fetchBlocks();
+    const buf = fs.readFileSync(tmp);
+    if (offset < 0 || offset + BLOCK_SIZE > buf.length) throw vscode.FileSystemError.FileNotFound(uri);
+    return new Uint8Array(buf.subarray(offset, offset + BLOCK_SIZE));
+  },
+  async writeFile(uri, content) {
+    const b = blockNumberOf(uri);
+    const offset = blockOffset(b);
+    if (content.length !== BLOCK_SIZE) {
+      throw new Error(`vForth Block: must stay exactly ${BLOCK_SIZE} bytes (got ${content.length}) - the file size on the image must never change.`);
+    }
+    const { sdImage, hdfmonkeyPath, destPrefix } = sdSettings();
+    const tmp = await fetchBlocks();
+    const buf = fs.readFileSync(tmp);
+    Buffer.from(content).copy(buf, offset);
+    fs.writeFileSync(tmp, buf);
+    await run(hdfmonkeyPath, ['put', sdImage, tmp, sdPath(destPrefix, BLOCKS_FILE)]);
+    log(`Block ${b}: saved to SD image.`);
+    blockFSEmitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+  },
+  delete() { throw vscode.FileSystemError.NoPermissions('vForth Blocks cannot be deleted here.'); },
+  rename() { throw vscode.FileSystemError.NoPermissions('vForth Blocks cannot be renamed.'); }
+};
+
+// Finds the vforth-screen/vforth-block URI behind whichever kind of editor
+// is active: activeTextEditor covers Screens (plain text documents), the
+// active tab's input covers Blocks (a custom editor - Hex Editor - has no
+// TextEditor at all).
+function activeUriByScheme(scheme) {
+  const ed = vscode.window.activeTextEditor;
+  if (ed && ed.document.uri.scheme === scheme) return ed.document.uri;
+  const tab = vscode.window.tabGroups.activeTabGroup && vscode.window.tabGroups.activeTabGroup.activeTab;
+  const input = tab && tab.input;
+  if (input && input.uri && input.uri.scheme === scheme) return input.uri;
+  return null;
+}
+
+async function closeUri(uri) {
+  const key = uri.toString();
+  for (const group of vscode.window.tabGroups.all) {
+    for (const tab of group.tabs) {
+      if (tab.input && tab.input.uri && tab.input.uri.toString() === key) {
+        await vscode.window.tabGroups.close(tab);
+        return;
+      }
+    }
+  }
+}
+
+async function openBlock(explicitB, replaceUri) {
   const { sdImage } = sdSettings();
   if (!sdImage) { vscode.window.showErrorMessage('vForth: set "vforth.sdImage" to the CSpect SD image (.img) path first.'); return; }
-  const input = await vscode.window.showInputBox({
-    prompt: 'vForth: Screen number to open',
-    validateInput: v => /^\d+$/.test((v || '').trim()) ? null : 'Enter a non-negative integer'
-  });
-  if (input === undefined) return;
-  const n = parseInt(input.trim(), 10);
+  if (!vscode.extensions.getExtension(HEX_EDITOR_EXT)) {
+    const choice = await vscode.window.showErrorMessage(
+      `vForth: editing a Block in hex needs the "Hex Editor" extension (${HEX_EDITOR_EXT}), which is not installed.`,
+      'Install');
+    if (choice === 'Install') {
+      await vscode.commands.executeCommand('workbench.extensions.installExtension', HEX_EDITOR_EXT);
+      vscode.window.showInformationMessage('vForth: Hex Editor installed - run "vForth: Open Block #" again.');
+    }
+    return;
+  }
+  let b = explicitB;
+  if (b === undefined) {
+    const input = await vscode.window.showInputBox({
+      prompt: 'vForth: Block number to open (hex)',
+      validateInput: v => /^\d+$/.test((v || '').trim()) ? null : 'Enter a non-negative integer'
+    });
+    if (input === undefined) return;
+    b = parseInt(input.trim(), 10);
+  }
+  if (b < 1) { vscode.window.showWarningMessage('vForth: Block 0 is not stored.'); return; }
+  const uri = vscode.Uri.from({ scheme: BLOCK_SCHEME, path: `/Block ${b}.bin` });
+  // Close the old tab BEFORE opening the new one, and last one opened is
+  // the new Block: closing after opening (as done for Screens, where it
+  // works fine) left the Hex Editor webview without keyboard focus after
+  // stepping, needing a manual click before Ctrl+Shift+F7/F8 worked again.
+  if (replaceUri) await closeUri(replaceUri);
+  try {
+    await vscode.commands.executeCommand('vscode.openWith', uri, 'hexEditor.hexedit', { preserveFocus: false, preview: false });
+  } catch (err) {
+    vscode.window.showErrorMessage(`vForth: could not open Block ${b} (${err.message}).`);
+    log(`open Block ${b}: FAILED\n${err.stderr || err.message}`);
+  }
+}
+
+async function stepBlock(delta) {
+  const uri = activeUriByScheme(BLOCK_SCHEME);
+  if (!uri) { vscode.window.showWarningMessage('vForth: no Block editor is active.'); return; }
+  await openBlock(blockNumberOf(uri) + delta, uri);
+}
+
+async function openScreen(explicitN, replaceUri) {
+  const { sdImage } = sdSettings();
+  if (!sdImage) { vscode.window.showErrorMessage('vForth: set "vforth.sdImage" to the CSpect SD image (.img) path first.'); return; }
+  let n = explicitN;
+  if (n === undefined) {
+    const input = await vscode.window.showInputBox({
+      prompt: 'vForth: Screen number to open',
+      validateInput: v => /^\d+$/.test((v || '').trim()) ? null : 'Enter a non-negative integer'
+    });
+    if (input === undefined) return;
+    n = parseInt(input.trim(), 10);
+  }
   const uri = vscode.Uri.from({ scheme: SCREEN_SCHEME, path: `/Screen ${n}.f` });
   let doc;
   try {
@@ -411,7 +536,23 @@ async function openScreen() {
     return;
   }
   await vscode.languages.setTextDocumentLanguage(doc, 'vforth-screen');
-  updateScreenDecoration(await vscode.window.showTextDocument(doc));
+  updateScreenDecoration(await vscode.window.showTextDocument(doc, { preview: false }));
+  if (replaceUri) await closeUri(replaceUri);
+}
+
+async function stepScreen(delta) {
+  const uri = activeUriByScheme(SCREEN_SCHEME);
+  if (!uri) { vscode.window.showWarningMessage('vForth: no Screen editor is active.'); return; }
+  await openScreen(screenNumberOf(uri) + delta, uri);
+}
+
+// vForth: Next/Previous Screen or Block - acts on whichever of the two is
+// the active editor (a Screen is a text editor, a Block a custom editor -
+// Hex Editor - so both are checked; see activeUriByScheme).
+async function stepScreenOrBlock(delta) {
+  if (activeUriByScheme(SCREEN_SCHEME)) return stepScreen(delta);
+  if (activeUriByScheme(BLOCK_SCHEME)) return stepBlock(delta);
+  vscode.window.showWarningMessage('vForth: no Screen or Block editor is active.');
 }
 
 // ------------------------------------------------------------------ activation
@@ -445,8 +586,12 @@ async function activate(context) {
     }),
     vscode.commands.registerCommand('vforth.showLog', () => output.show()),
     vscode.commands.registerCommand('vforth.pushToSD', pushToSD),
-    vscode.commands.registerCommand('vforth.openScreen', openScreen),
+    vscode.commands.registerCommand('vforth.openScreen', () => openScreen()),
+    vscode.commands.registerCommand('vforth.openBlock', () => openBlock()),
+    vscode.commands.registerCommand('vforth.nextScreenOrBlock', () => stepScreenOrBlock(1)),
+    vscode.commands.registerCommand('vforth.previousScreenOrBlock', () => stepScreenOrBlock(-1)),
     vscode.workspace.registerFileSystemProvider(SCREEN_SCHEME, screenFS, { isCaseSensitive: true }),
+    vscode.workspace.registerFileSystemProvider(BLOCK_SCHEME, blockFS, { isCaseSensitive: true }),
     screenBottomBorder,
     vscode.window.onDidChangeActiveTextEditor(updateScreenDecoration),
     vscode.workspace.onDidChangeTextDocument(e => {

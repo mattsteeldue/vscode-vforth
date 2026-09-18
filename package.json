@@ -53,7 +53,22 @@
       { "command": "vforth.reloadIndex", "title": "vForth: Reload index" },
       { "command": "vforth.showLog", "title": "vForth: Show log" },
       { "command": "vforth.pushToSD", "title": "vForth: Push file to SD image" },
-      { "command": "vforth.openScreen", "title": "vForth: Open Screen #" }
+      { "command": "vforth.openScreen", "title": "vForth: Open Screen #" },
+      { "command": "vforth.openBlock", "title": "vForth: Open Block # (hex)" },
+      { "command": "vforth.nextScreenOrBlock", "title": "vForth: Next Screen/Block" },
+      { "command": "vforth.previousScreenOrBlock", "title": "vForth: Previous Screen/Block" }
+    ],
+    "keybindings": [
+      {
+        "command": "vforth.nextScreenOrBlock",
+        "key": "ctrl+shift+f8",
+        "when": "resourceScheme == vforth-screen || resourceScheme == vforth-block"
+      },
+      {
+        "command": "vforth.previousScreenOrBlock",
+        "key": "ctrl+shift+f7",
+        "when": "resourceScheme == vforth-screen || resourceScheme == vforth-block"
+      }
     ],
     "configuration": {
       "title": "vForth",

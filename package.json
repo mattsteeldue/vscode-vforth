@@ -1,0 +1,77 @@
+{
+  "name": "vforth",
+  "displayName": "vForth",
+  "description": "Language support for vForth, the Forth system for the ZX Spectrum Next: syntax, NEEDS diagnostics, help on hover, go to definition.",
+  "version": "0.1.0",
+  "publisher": "mattsteeldue",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "repository": { "type": "git", "url": "https://github.com/mattsteeldue/vscode-vforth" },
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "vforth",
+        "aliases": ["vForth", "vforth"],
+        "extensions": [".f"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "vforth",
+        "scopeName": "source.vforth",
+        "path": "./syntaxes/vforth.tmLanguage.json"
+      }
+    ],
+    "semanticTokenTypes": [
+      { "id": "vforthLibrary", "superType": "function", "description": "Word provided by inc/ or lib/ (needs NEEDS)" },
+      { "id": "vforthLocal", "superType": "function", "description": "Word defined in the current file" }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "vforth",
+        "scopes": {
+          "vforthLibrary": ["support.class.vforth"],
+          "vforthLocal": ["entity.name.function.vforth"]
+        }
+      }
+    ],
+    "commands": [
+      { "command": "vforth.reloadIndex", "title": "vForth: Reload index" },
+      { "command": "vforth.showLog", "title": "vForth: Show log" }
+    ],
+    "configuration": {
+      "title": "vForth",
+      "properties": {
+        "vforth.root": {
+          "type": "string",
+          "default": "",
+          "description": "vForth root directory (the one holding src/F18e.f, inc/, lib/, help/). Empty: auto-detect in the workspace."
+        },
+        "vforth.preloaded": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "NEEDS arguments assumed already executed before any file is loaded (e.g. what AUTOEXEC loads)."
+        },
+        "vforth.diagnostics.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report words that require NEEDS, unresolvable NEEDS/INCLUDE and non-ASCII characters."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[vforth]": {
+        "files.encoding": "utf8",
+        "files.eol": "\n",
+        "editor.wordSeparators": "",
+        "editor.semanticHighlighting.enabled": true
+      }
+    }
+  }
+}

@@ -1,0 +1,133 @@
+{
+   "$schema" : "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+   "fileTypes" : [
+      "f"
+   ],
+   "name" : "vForth",
+   "patterns" : [
+      {
+         "include" : "#comment-line"
+      },
+      {
+         "include" : "#comment-paren"
+      },
+      {
+         "include" : "#string-paren"
+      },
+      {
+         "include" : "#string-quote"
+      },
+      {
+         "include" : "#definition"
+      },
+      {
+         "include" : "#char"
+      },
+      {
+         "include" : "#needs"
+      },
+      {
+         "include" : "#control"
+      },
+      {
+         "include" : "#defining"
+      },
+      {
+         "include" : "#core"
+      },
+      {
+         "include" : "#number"
+      }
+   ],
+   "repository" : {
+      "char" : {
+         "captures" : {
+            "1" : {
+               "name" : "support.function.vforth"
+            },
+            "2" : {
+               "name" : "constant.character.vforth"
+            }
+         },
+         "match" : "(?:^|(?<=\\s))((?i:CHAR|\\[CHAR\\]))\\s+(\\S+)"
+      },
+      "comment-line" : {
+         "match" : "(?:^|(?<=\\s))\\\\(?:\\s.*)?$",
+         "name" : "comment.line.backslash.vforth"
+      },
+      "comment-paren" : {
+         "begin" : "(?:^|(?<=\\s))\\((?=\\s|$)",
+         "end" : "\\)|$",
+         "name" : "comment.block.paren.vforth"
+      },
+      "control" : {
+         "match" : "(?:^|(?<=\\s))(?i:REPEAT|\\+LOOP|AGAIN|BEGIN|ENDIF|LEAVE|UNTIL|WHILE|\\?DO-|BACK|ELSE|EXIT|LOOP|THEN|\\?DO|END|DO|I'|IF|I)(?=\\s|$)",
+         "name" : "keyword.control.vforth"
+      },
+      "core" : {
+         "match" : "(?:^|(?<=\\s))(?i:PAGE-WATERMARK|EMPTY-BUFFERS|SKIP-HP-PAGE|DEFINITIONS|\\(COMPARE\\)|-TRAILING|\\?HEAP_PTR|\\?TERMINAL|BLK-FNAME|BLK-WRITE|F_FGETPOS|F_GETLINE|F_INCLUDE|F_OPENDIR|F_READDIR|INTERPRET|NEEDS-INC|NEEDS-LIB|SOURCE-ID|\\[COMPILE\\]|\\(NUMBER\\)|\\(PREFIX\\)|\\?IN_MMU7|\\?LOADING|AUTOEXEC|BLK-INIT|BLK-READ|BLK-SEEK|COMPILE,|DLITERAL|NEEDS-FN|TRAVERSE|VOC-LINK|\\(\\+LOOP\\)|\\(;CODE\\)|\\(\\?EMIT\\)|\\(ABORT\\)|\\(EMITC\\)|\\(LEAVE\\)|\\+ORIGIN|0BRANCH|CASEOFF|COMPILE|CONTEXT|CURRENT|DECIMAL|DNEGATE|ENCLOSE|EXECUTE|F_CLOSE|F_WRITE|HANDLER|INCLUDE|LITERAL|MESSAGE|M_P3DOS|NEEDS-F|NEEDS-W|WARNING|_DOES>_|\\(FIND\\)|\\(LINE\\)|\\(LOOP\\)|\\(NEXT\\)|1FRAME|\\?>HEAP|\\?ERROR|\\?PAIRS|\\?STACK|ACCEPT|BLK-FH|BOUNDS|BRANCH|BUFFER|CASEON|CMOVE>|DEVICE|FM/MOD|FORGET|F_OPEN|F_READ|F_SEEK|F_SYNC|LATEST|LSHIFT|MAP-FN|NEEDS/|NEGATE|NUMBER|OFFSET|RSHIFT|SELECT|SM/REM|SMUDGE|SPACES|SPLASH|TOGGLE|UM/MOD|UPDATE|\\[CHAR\\]|#BUFF|\\(\\?DO\\)|\\(CLS\\)|\\(MAP\\)|\\(SGN\\)|\\*/MOD|-FIND|\\.LINE|2DROP|2FIND|2OVER|2SWAP|<NAME|>BODY|\\?COMP|\\?EXEC|ABORT|ALLOT|B/BUF|B/SCR|BASIC|BLANK|BLOCK|CELL\\+|CELL-|CELLS|CMOVE|COUNT|DIGIT|EMITC|ERASE|ERROR|FENCE|FIRST|FLUSH|FORTH|INDEX|L/SCR|LIMIT|M/MOD|MMU7!|MMU7@|NEEDS|NMODE|OPEN<|PLACE|QUERY|SPACE|STATE|UPPER|VIDEO|WIDTH|WORDS|!CSP|#SEC|\\(\\.\"\\)|\\(DO\\)|\\+BUF|-DUP|-ROT|/MOD|2DUP|<FAR|>FAR|\\?CSP|\\?DUP|BASE|CHAR|COLD|CURS|DABS|DROP|EMIT|FILL|HERE|HOLD|LIST|LOAD|NOOP|OVER|PICK|PREV|QUIT|REG!|REG@|SIGN|SPAN|SWAP|TUCK|TYPE|USED|WARM|WORD|-->|>IN|ABS|AND|BLK|BYE|C/L|CFA|CLS|CSP|D\\+-|D\\.R|DPL|DUP|EXP|FAR|FLD|HEX|HLD|HP@|ID\\.|KEY|LFA|LIT|MAX|MIN|MOD|NFA|NIP|NOT|OUT|PAD|PFA|R/W|ROT|RP!|RP@|S>D|SCR|SP!|SP@|TIB|UM\\*|XOR|#>|#S|\\*/|\\+!|\\+-|,\"|-1|\\.\"|\\.\\(|\\.C|\\.R|0<|0=|0>|1\\+|1-|2!|2\\*|2\\+|2-|2/|2@|<#|>R|BL|C!|C,|C@|CR|D\\+|D\\.|DP|HP|LP|M\\*|M/|OR|P!|P@|R#|R0|R>|R@|S0|U\\.|U<|!|#|'|\\(|\\*|\\+|,|-|\\.|/|0|1|2|3|<|=|>|\\?|@|\\[|\\\\|\\])(?=\\s|$)",
+         "name" : "support.function.vforth"
+      },
+      "defining" : {
+         "match" : "(?:^|(?<=\\s))(?i:VOCABULARY|IMMEDIATE|CONSTANT|VARIABLE|<BUILDS|CREATE|MARKER|;CODE|DOES>|CODE|USER|:|;)(?=\\s|$)",
+         "name" : "keyword.other.definition.vforth"
+      },
+      "definition" : {
+         "captures" : {
+            "1" : {
+               "name" : "keyword.other.definition.vforth"
+            },
+            "2" : {
+               "name" : "entity.name.function.vforth"
+            }
+         },
+         "match" : "(?:^|(?<=\\s))((?i:VOCABULARY|2CONSTANT|2VARIABLE|CONSTANT|VARIABLE|<BUILDS|\\+FIELD|2VALUE|CREATE|MARKER|DEFER|FIELD|VALUE|CODE|USER|:))\\s+(\\S+)"
+      },
+      "needs" : {
+         "captures" : {
+            "1" : {
+               "name" : "keyword.control.import.vforth"
+            },
+            "2" : {
+               "name" : "entity.name.namespace.vforth"
+            }
+         },
+         "match" : "(?:^|(?<=\\s))((?i:NEEDS|INCLUDE))\\s+(\\S+)"
+      },
+      "number" : {
+         "match" : "(?:^|(?<=\\s))-?(?:\\$[0-9A-Fa-f]+|%[01]+|[0-9]+)(?:\\.[0-9]*)?(?=\\s|$)",
+         "name" : "constant.numeric.vforth"
+      },
+      "string-paren" : {
+         "begin" : "(?:^|(?<=\\s))(\\.\\()(?=\\s|$)",
+         "beginCaptures" : {
+            "1" : {
+               "name" : "support.function.vforth"
+            }
+         },
+         "contentName" : "string.unquoted.vforth",
+         "end" : "\\)|$",
+         "endCaptures" : {
+            "0" : {
+               "name" : "support.function.vforth"
+            }
+         }
+      },
+      "string-quote" : {
+         "begin" : "(?:^|(?<=\\s))((?!\\()[^\\s\"]+\")(?=\\s|$)",
+         "beginCaptures" : {
+            "1" : {
+               "name" : "support.function.vforth"
+            }
+         },
+         "contentName" : "string.quoted.double.vforth",
+         "end" : "\"|$",
+         "endCaptures" : {
+            "0" : {
+               "name" : "support.function.vforth"
+            }
+         }
+      }
+   },
+   "scopeName" : "source.vforth"
+}

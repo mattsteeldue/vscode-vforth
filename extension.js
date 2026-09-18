@@ -5,6 +5,7 @@
 
 const vscode = require('vscode');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const { Model, CORE_SOURCE } = require('./src/model');
@@ -229,12 +230,30 @@ const semanticProvider = {
 };
 
 // ------------------------------------------------------------------ deploy
-// Pushes the active file onto the CSpect SD image with hdfmonkey, which
-// writes directly into the HDF/FAT image without the exclusive lock an
-// imdisk mount would need, and without needing CSpect's REMOUNT cycle
-// either (unlike hdfm-gooey): reads and writes both work at any time,
-// CSpect open or closed, and an open vForth session sees the change
-// immediately - verified against the real image and a live CSpect.
+// Talks to the CSpect SD image with hdfmonkey, which writes directly into
+// the HDF/FAT image without the exclusive lock an imdisk mount would need,
+// and without needing CSpect's REMOUNT cycle either (unlike hdfm-gooey):
+// reads and writes both work at any time, CSpect open or closed, and an
+// open vForth session sees the change immediately - verified against the
+// real image and a live CSpect.
+function sdSettings() {
+  return {
+    sdImage: (config().get('sdImage') || '').trim(),
+    hdfmonkeyPath: (config().get('hdfmonkeyPath') || 'hdfmonkey').trim(),
+    destPrefix: (config().get('sdDestPrefix') || '').trim().replace(/^\/+|\/+$/g, '')
+  };
+}
+
+function sdPath(destPrefix, rel) { return destPrefix ? `${destPrefix}/${rel}` : rel; }
+
+function run(cmd, args) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, (err, stdout, stderr) => {
+      if (err) reject(Object.assign(err, { stderr })); else resolve({ stdout, stderr });
+    });
+  });
+}
+
 async function pushToSD() {
   const editor = vscode.window.activeTextEditor;
   if (!editor) { vscode.window.showWarningMessage('vForth: no active file to push.'); return; }
@@ -245,10 +264,8 @@ async function pushToSD() {
   const rel = path.relative(model.root, doc.uri.fsPath).split(path.sep).join('/');
   if (rel.startsWith('..')) { vscode.window.showWarningMessage('vForth: active file is not under vforth.root.'); return; }
 
-  const sdImage = (config().get('sdImage') || '').trim();
+  const { sdImage, hdfmonkeyPath, destPrefix } = sdSettings();
   if (!sdImage) { vscode.window.showErrorMessage('vForth: set "vforth.sdImage" to the CSpect SD image (.img) path first.'); return; }
-  const hdfmonkeyPath = (config().get('hdfmonkeyPath') || 'hdfmonkey').trim();
-  const destPrefix = (config().get('sdDestPrefix') || '').trim().replace(/^\/+|\/+$/g, '');
   const excludeTopDirs = config().get('sdExcludeTopDirs') || [];
 
   const top = rel.split('/')[0];
@@ -261,16 +278,140 @@ async function pushToSD() {
 
   if (doc.isDirty) await doc.save();
 
-  const destPath = destPrefix ? `${destPrefix}/${rel}` : rel;
-  execFile(hdfmonkeyPath, ['put', sdImage, doc.uri.fsPath, destPath], (err, stdout, stderr) => {
-    if (err) {
-      log(`push ${rel} -> ${destPath}: FAILED\n${stderr || err.message}`);
-      vscode.window.showErrorMessage(`vForth: push failed (${err.message}). See "vForth: Show log".`);
-      return;
-    }
+  const destPath = sdPath(destPrefix, rel);
+  try {
+    const { stdout } = await run(hdfmonkeyPath, ['put', sdImage, doc.uri.fsPath, destPath]);
     log(`push ${rel} -> ${destPath}: ok${stdout ? '\n' + stdout : ''}`);
     vscode.window.setStatusBarMessage(`vForth: pushed ${rel} to SD image`, 4000);
+  } catch (err) {
+    log(`push ${rel} -> ${destPath}: FAILED\n${err.stderr || err.message}`);
+    vscode.window.showErrorMessage(`vForth: push failed (${err.message}). See "vForth: Show log".`);
+  }
+}
+
+// ------------------------------------------------------------------ screens
+// A Screen (1024 bytes = 16 lines x 64 chars, 2 Blocks) inside !Blocks-64.bin
+// opened as an ordinary VS Code text document, backed by a virtual
+// FileSystemProvider (scheme vforth-screen). Reads/writes the whole 16 MB
+// block store through hdfmonkey each time (~0.3 s round trip measured
+// against the real image, with CSpect running) since hdfmonkey has no
+// byte-range get/put - there is no faster path available.
+const SCREEN_SCHEME = 'vforth-screen';
+const BLOCKS_FILE = '!Blocks-64.bin';
+const SCREEN_LINES = 16;
+const SCREEN_COLS = 64;
+const screenFSEmitter = new vscode.EventEmitter();
+
+function screenNumberOf(uri) {
+  const m = /(\d+)/.exec(uri.path);
+  if (!m) throw vscode.FileSystemError.FileNotFound(uri);
+  return parseInt(m[1], 10);
+}
+
+function decodeScreen(buf) {
+  const lines = [];
+  for (let i = 0; i < SCREEN_LINES; i++) {
+    let line = '';
+    for (let c = 0; c < SCREEN_COLS; c++) line += String.fromCharCode(buf[i * SCREEN_COLS + c]);
+    lines.push(line.replace(/ +$/, ''));
+  }
+  return lines.join('\n');
+}
+
+// Throws with a message naming the offending line/column on any violation
+// (line count, line length, non-ASCII, NUL) instead of saving silently
+// truncated or corrupted content.
+function encodeScreen(text) {
+  const lines = text.split('\n');
+  if (lines.length && lines[lines.length - 1] === '') lines.pop();
+  if (lines.length > SCREEN_LINES) throw new Error(`vForth Screen: has ${SCREEN_LINES} lines max, got ${lines.length}.`);
+  const buf = Buffer.alloc(SCREEN_LINES * SCREEN_COLS, 0x20);
+  lines.forEach((line, i) => {
+    if (line.length > SCREEN_COLS) throw new Error(`vForth Screen: line ${i + 1} is ${line.length} chars, max ${SCREEN_COLS}.`);
+    for (let c = 0; c < line.length; c++) {
+      const code = line.charCodeAt(c);
+      if (code === 0) throw new Error(`vForth Screen: line ${i + 1} col ${c + 1} is a NUL byte (silently aborts LOAD).`);
+      if (code > 127) throw new Error(`vForth Screen: line ${i + 1} col ${c + 1} is not 7-bit ASCII.`);
+      buf[i * SCREEN_COLS + c] = code;
+    }
   });
+  return buf;
+}
+
+async function fetchBlocks() {
+  const { sdImage, hdfmonkeyPath, destPrefix } = sdSettings();
+  if (!sdImage) throw new Error('vForth: set "vforth.sdImage" first.');
+  const tmp = path.join(os.tmpdir(), 'vforth-blocks-scratch.bin');
+  await run(hdfmonkeyPath, ['get', sdImage, sdPath(destPrefix, BLOCKS_FILE), tmp]);
+  return tmp;
+}
+
+const screenFS = {
+  onDidChangeFile: screenFSEmitter.event,
+  watch() { return new vscode.Disposable(() => {}); },
+  stat() { return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: SCREEN_LINES * SCREEN_COLS }; },
+  readDirectory() { return []; },
+  createDirectory() {},
+  async readFile(uri) {
+    const n = screenNumberOf(uri);
+    const tmp = await fetchBlocks();
+    const buf = fs.readFileSync(tmp);
+    const offset = (2 * n - 1) * 512;
+    if (offset < 0 || offset + SCREEN_LINES * SCREEN_COLS > buf.length) throw vscode.FileSystemError.FileNotFound(uri);
+    return Buffer.from(decodeScreen(buf.subarray(offset, offset + SCREEN_LINES * SCREEN_COLS)), 'utf8');
+  },
+  async writeFile(uri, content) {
+    const n = screenNumberOf(uri);
+    const patch = encodeScreen(Buffer.from(content).toString('utf8'));   // throws on validation failure
+    const { sdImage, hdfmonkeyPath, destPrefix } = sdSettings();
+    const tmp = await fetchBlocks();
+    const buf = fs.readFileSync(tmp);
+    patch.copy(buf, (2 * n - 1) * 512);
+    fs.writeFileSync(tmp, buf);
+    await run(hdfmonkeyPath, ['put', sdImage, tmp, sdPath(destPrefix, BLOCKS_FILE)]);
+    log(`Screen ${n}: saved to SD image.`);
+    screenFSEmitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+  },
+  delete() { throw vscode.FileSystemError.NoPermissions('vForth Screens cannot be deleted here.'); },
+  rename() { throw vscode.FileSystemError.NoPermissions('vForth Screens cannot be renamed.'); }
+};
+
+// Bottom border under the last line, marking the 16-line boundary (a
+// vertical ruler at column 64 comes for free from configurationDefaults).
+const screenBottomBorder = vscode.window.createTextEditorDecorationType({
+  isWholeLine: true,
+  borderStyle: 'solid',
+  borderWidth: '0 0 2px 0',
+  borderColor: new vscode.ThemeColor('editorRuler.foreground')
+});
+
+function updateScreenDecoration(editor) {
+  if (!editor || editor.document.uri.scheme !== SCREEN_SCHEME) return;
+  const last = Math.min(SCREEN_LINES - 1, editor.document.lineCount - 1);
+  if (last < 0) return;
+  editor.setDecorations(screenBottomBorder, [editor.document.lineAt(last).range]);
+}
+
+async function openScreen() {
+  const { sdImage } = sdSettings();
+  if (!sdImage) { vscode.window.showErrorMessage('vForth: set "vforth.sdImage" to the CSpect SD image (.img) path first.'); return; }
+  const input = await vscode.window.showInputBox({
+    prompt: 'vForth: Screen number to open',
+    validateInput: v => /^\d+$/.test((v || '').trim()) ? null : 'Enter a non-negative integer'
+  });
+  if (input === undefined) return;
+  const n = parseInt(input.trim(), 10);
+  const uri = vscode.Uri.from({ scheme: SCREEN_SCHEME, path: `/Screen ${n}.f` });
+  let doc;
+  try {
+    doc = await vscode.workspace.openTextDocument(uri);
+  } catch (err) {
+    vscode.window.showErrorMessage(`vForth: could not open Screen ${n} (${err.message}). See "vForth: Show log".`);
+    log(`open Screen ${n}: FAILED\n${err.stderr || err.message}`);
+    return;
+  }
+  await vscode.languages.setTextDocumentLanguage(doc, 'vforth-screen');
+  updateScreenDecoration(await vscode.window.showTextDocument(doc));
 }
 
 // ------------------------------------------------------------------ activation
@@ -303,7 +444,15 @@ async function activate(context) {
       vscode.window.showInformationMessage(model ? `vForth index reloaded (${model.root})` : 'vForth root not found');
     }),
     vscode.commands.registerCommand('vforth.showLog', () => output.show()),
-    vscode.commands.registerCommand('vforth.pushToSD', pushToSD)
+    vscode.commands.registerCommand('vforth.pushToSD', pushToSD),
+    vscode.commands.registerCommand('vforth.openScreen', openScreen),
+    vscode.workspace.registerFileSystemProvider(SCREEN_SCHEME, screenFS, { isCaseSensitive: true }),
+    screenBottomBorder,
+    vscode.window.onDidChangeActiveTextEditor(updateScreenDecoration),
+    vscode.workspace.onDidChangeTextDocument(e => {
+      const ed = vscode.window.visibleTextEditors.find(x => x.document === e.document);
+      if (ed) updateScreenDecoration(ed);
+    })
   );
   setupWatcher(context);
   refreshAll();

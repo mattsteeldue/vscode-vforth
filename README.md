@@ -62,6 +62,22 @@ Known limits: numbers in a `BASE` set by other means are not recognised
 | `vforth.sdDestPrefix` | `""` | Prefix prepended, inside the image, to the file's path relative to `vforth.root` (e.g. `"tools/vForth"`). |
 | `vforth.sdExcludeTopDirs` | `["dev","doc","dot","emu","forum","project","prompts","tools","version"]` | Top-level directories not normally deployed to the SD card; pushing from one asks for confirmation. |
 
+Example, one real working setup (adjust the paths to your own):
+
+```json
+"vforth.sdImage": "C:\\Zx\\CSpect\\cspect-next-2gb.img",
+"vforth.hdfmonkeyPath": "C:\\Zx\\CSpect\\hdfmonkey.exe",
+"vforth.sdDestPrefix": "tools/vForth"
+```
+
+`vforth.sdImage` is the SD card **image** itself (the `.img` CSpect loads,
+with a FAT filesystem inside) — not `!Blocks-64.bin` and not any other file
+that lives *inside* that image. Pointing it at `!Blocks-64.bin` by mistake
+is an easy slip (that path is right there in `vforth.root`) and fails with
+`hdfmonkey` unable to read a FAT filesystem from it. `vforth.hdfmonkeyPath`
+needs the full path unless `hdfmonkey` is already on `PATH`, since the
+default is just `"hdfmonkey"`.
+
 For `.f` files the extension sets UTF-8 (identical to ASCII for 7-bit
 text), LF line endings and whitespace-only word separators, so that a
 double click selects a whole Forth word.
@@ -108,7 +124,7 @@ If another extension (e.g. a Fortran one) also claims `.f`, pin it:
 "files.associations": { "*.f": "vforth" }
 ```
 
-Commands: *vForth: Reload index*, *vForth: Show log*, *vForth: Push file to SD image*.
+Commands: *vForth: Reload index*, *vForth: Show log*, *vForth: Push file to SD image*, *vForth: Open Screen #*.
 
 ## Push file to SD image
 
@@ -125,3 +141,28 @@ No `REMOUNT` cycle is needed, unlike with `hdfm-gooey`: reads and writes
 both work at any time, CSpect open or closed, and a running vForth session
 sees a pushed file immediately (`NEEDS`/`INCLUDE` right after the push) —
 verified against a real image and a live CSpect session.
+
+## Open Screen #
+
+Opens a Screen (1024 bytes = 16 lines x 64 columns, 2 Blocks) from
+`!Blocks-64.bin` on the SD image as an ordinary text document — prompts for
+the screen number, e.g. *11* for the AUTOEXEC screen. Saving (`Ctrl+S`)
+validates all 16 lines (max 64 chars each, 7-bit ASCII, no NUL — a NUL
+silently aborts `LOAD`) and, only if valid, patches the 1024 bytes back
+into `!Blocks-64.bin` on the image via `hdfmonkey`, leaving the rest of the
+16 MB block store untouched.
+
+A vertical ruler at column 64 and a bottom border under line 16 mark the
+Screen's boundaries; syntax highlighting matches `.f` files, since a Screen
+is ordinary vForth source. There is no byte-range read/write in
+`hdfmonkey`, so every open and every save round-trips the whole 16 MB
+block store through it (`get` then, on save, `put`) — measured at about
+0.3 s combined against a real image with CSpect running, fast enough to
+feel immediate.
+
+Known limits: no visual indication of *which* Block/Screen number is
+"live" elsewhere (e.g. currently `LOAD`ed) inside a running vForth session;
+concurrent writes to *other* blocks from inside CSpect during the narrow
+read-modify-write window could in principle be lost, since the whole file
+is read, patched locally and written back whole — not just observed in
+testing, but a structural possibility worth knowing about.

@@ -18,11 +18,20 @@
         "aliases": ["vForth", "vforth"],
         "extensions": [".f"],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "vforth-screen",
+        "aliases": ["vForth Screen"]
       }
     ],
     "grammars": [
       {
         "language": "vforth",
+        "scopeName": "source.vforth",
+        "path": "./syntaxes/vforth.tmLanguage.json"
+      },
+      {
+        "language": "vforth-screen",
         "scopeName": "source.vforth",
         "path": "./syntaxes/vforth.tmLanguage.json"
       }
@@ -43,7 +52,8 @@
     "commands": [
       { "command": "vforth.reloadIndex", "title": "vForth: Reload index" },
       { "command": "vforth.showLog", "title": "vForth: Show log" },
-      { "command": "vforth.pushToSD", "title": "vForth: Push file to SD image" }
+      { "command": "vforth.pushToSD", "title": "vForth: Push file to SD image" },
+      { "command": "vforth.openScreen", "title": "vForth: Open Screen #" }
     ],
     "configuration": {
       "title": "vForth",
@@ -93,6 +103,10 @@
         "files.eol": "\n",
         "editor.wordSeparators": "",
         "editor.semanticHighlighting.enabled": true
+      },
+      "[vforth-screen]": {
+        "editor.rulers": [64],
+        "editor.wordWrap": "off"
       }
     }
   }

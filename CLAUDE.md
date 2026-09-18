@@ -98,6 +98,20 @@ Three-layer split, deliberately decoupled from VS Code:
   session sees a pushed file immediately — verified against the real image
   and a live CSpect (a REMOUNT requirement was first suspected, then
   disproved by controlled negative/positive tests, see project memory).
+  Also owns `vforth.openScreen` (phase 3): opens a Screen (1024 bytes = 16
+  lines x 64 cols, 2 Blocks) from `!Blocks-64.bin` as an ordinary text
+  document, through a virtual `FileSystemProvider` on the `vforth-screen`
+  scheme (not the `vforth` language — deliberately kept separate so the
+  language-intelligence pipeline, which assumes a real path under
+  `vforth.root`, never runs against it). `readFile`/`writeFile` round-trip
+  the whole 16 MB block store through `hdfmonkey get`/`put` each time
+  (`(2*screen-1)*512` offset, matching the offset formula in the target
+  project's own docs) since `hdfmonkey` has no byte-range I/O; save-time
+  validation (line count, line length, 7-bit ASCII, no NUL) throws with a
+  clear line/column message rather than writing corrupted or truncated
+  content. `editor.rulers: [64]` (via `configurationDefaults["[vforth-screen]"]`)
+  and a `screenBottomBorder` decoration under line 16 mark the Screen's
+  bounds.
 
 - **`build/vforth-build.pl`** — offline generator, not run by the extension
   at runtime. Reads the same `RENAME` table from the target's `src/F18e.f`

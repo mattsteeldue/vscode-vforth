@@ -130,9 +130,10 @@ class Model {
       }
     }
     for (let pass = 0; pass < 3; pass++) {
-      const before = this.ctx.definers.size + this.ctx.parsers.size;
+      const size = () => this.ctx.definers.size + this.ctx.parsers.size + this.ctx.commenters.size;
+      const before = size();
       for (const t of libFiles) inferWords(scan(t, this.ctx), this.ctx);
-      if (this.ctx.definers.size + this.ctx.parsers.size === before) break;
+      if (size() === before) break;
     }
 
     // index 2: providers of every word defined in inc/ and lib/

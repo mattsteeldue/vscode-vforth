@@ -20,6 +20,8 @@
 // A context object may extend the built-in sets:
 //   ctx.definers  Set of user defining words (next token is a defname)
 //   ctx.parsers   Set of user parsing words  (next token is an arg)
+//   ctx.commenters Map of user words that run \ or ( at run time, e.g.
+//                 ": TESTING ... [COMPILE] \ ;" -> name => '\' or ')'
 //
 // Pure module: no dependency on the vscode API.
 
@@ -29,6 +31,9 @@ const DEFINING = new Set([
   'DEFER', 'FIELD', '+FIELD'
 ]);
 const PARSING = new Set(['CHAR', '[CHAR]']);
+// Words that take the next token as their argument and compile it instead of
+// executing it, even when it is IMMEDIATE: "[COMPILE] \" is not a comment.
+const COMPILING = new Set(['[COMPILE]', 'POSTPONE']);
 // Words whose body parses the input stream at run time.
 const PARSE_PRIMITIVES = new Set(['CHAR', 'WORD', 'PARSE', 'PARSE-NAME']);
 
@@ -49,6 +54,7 @@ function isNumber(u, base) {
 function scanLine(text, line, ctx) {
   const definers = ctx && ctx.definers;
   const parsers = ctx && ctx.parsers;
+  const commenters = ctx && ctx.commenters;
   const out = [];
   const re = /\S+/g;
   let m;
@@ -101,8 +107,19 @@ function scanLine(text, line, ctx) {
       continue;
     }
     out.push({ kind: 'word', text: tok, line, start, end });
+    const cd = commenters && commenters.get(u);
+    if (cd) {
+      // user word that runs \ or ( at run time: the text after it is a comment
+      const stop = cd === '\\' ? text.length
+                   : (text.indexOf(')', end + 1) < 0 ? text.length : text.indexOf(')', end + 1) + 1);
+      if (stop > end) out.push({ kind: 'comment', text: text.slice(end, stop), line, start: end, end: stop });
+      if (cd === '\\') break;
+      re.lastIndex = stop;
+      continue;
+    }
     soft = true;
-    if (DEFINING.has(u) || (definers && definers.has(u))) pending = 'defname';
+    if (COMPILING.has(u)) { pending = 'word'; soft = false; }
+    else if (DEFINING.has(u) || (definers && definers.has(u))) pending = 'defname';
     else if (u === 'NEEDS') pending = 'needs';
     else if (u === 'INCLUDE') pending = 'include';
     else if (PARSING.has(u)) { pending = 'arg'; soft = false; }
@@ -130,9 +147,10 @@ function inferWords(tokens, ctx) {
   let colon = false;          // the last word was ':'
   let cur = null;             // name of the colon definition being scanned
   let parses = false;
+  let compiling = false;      // the last word was [COMPILE] / POSTPONE
   const close = () => {
-    if (cur && parses && !ctx.definers.has(cur)) ctx.parsers.add(cur);
-    cur = null; parses = false;
+    if (cur && parses && !ctx.definers.has(cur) && !ctx.commenters.has(cur)) ctx.parsers.add(cur);
+    cur = null; parses = false; compiling = false;
   };
   for (const t of tokens) {
     if (t.kind === 'defname') {
@@ -145,7 +163,12 @@ function inferWords(tokens, ctx) {
     colon = u === ':';
     if (u === ';') { close(); continue; }
     if (!cur || colon) continue;
-    if (u === 'CREATE' || u === '<BUILDS' || DEFINING.has(u) || ctx.definers.has(u)) {
+    const wasCompiling = compiling;
+    compiling = COMPILING.has(u);
+    if (wasCompiling && (u === '\\' || u === '(')) {
+      ctx.commenters.set(cur, u === '\\' ? '\\' : ')');
+      ctx.parsers.delete(cur);
+    } else if (u === 'CREATE' || u === '<BUILDS' || DEFINING.has(u) || ctx.definers.has(u)) {
       ctx.definers.add(cur);
       ctx.parsers.delete(cur);
     } else if (PARSE_PRIMITIVES.has(u)) {
@@ -158,7 +181,8 @@ function inferWords(tokens, ctx) {
 
 function newContext(base) {
   return { definers: new Set(base ? base.definers : []),
-           parsers: new Set(base ? base.parsers : []) };
+           parsers: new Set(base ? base.parsers : []),
+           commenters: new Map(base ? base.commenters : []) };
 }
 
 module.exports = { scan, scanLine, isNumber, isQuoteWord, inferWords, newContext, DEFINING };

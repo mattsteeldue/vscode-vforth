@@ -2,7 +2,7 @@
   "name": "vforth",
   "displayName": "vForth",
   "description": "vForth (Forth for the ZX Spectrum Next): syntax, NEEDS diagnostics, hover help, go to definition; push files to the CSpect SD image and edit Screens and Blocks.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "mattsteeldue",
   "license": "MIT",
   "icon": "images/icon.png",

@@ -1,6 +1,12 @@
 # Changelog
 
-## [0.1.0] - unreleased
+## [0.1.1] - 2026-09-19
+
+- "Push file to SD image" renamed "Send file to SD image" (command id unchanged).
+- New `vforth.pullFromSD` (Pick file from SD image): fetches the SD copy of the active file and overwrites the local one after confirmation.
+- README: where Screen/Block data lives, and the scratch file.
+
+## [0.1.0] - 2026-09-19
 
 First version, built over 2026-09-18 and 2026-09-19.
 

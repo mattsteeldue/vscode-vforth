@@ -236,7 +236,7 @@ Known limits: numbers in a `BASE` set by other means are not recognised
 ## Install
 
 No compilation is required. Either copy this directory to
-`%USERPROFILE%\.vscode\extensions\mattsteeldue.vforth-0.1.0` and reload
+`%USERPROFILE%\.vscode\extensions\mattsteeldue.vforth-0.1.1` and reload
 VS Code, or package it with `npx @vscode/vsce package` and install the
 resulting `.vsix` with *Extensions: Install from VSIX...*.
 

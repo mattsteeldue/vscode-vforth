@@ -1,27 +1,54 @@
 {
   "name": "vforth",
   "displayName": "vForth",
-  "description": "Language support for vForth, the Forth system for the ZX Spectrum Next: syntax, NEEDS diagnostics, help on hover, go to definition.",
+  "description": "vForth (Forth for the ZX Spectrum Next): syntax, NEEDS diagnostics, hover help, go to definition; push files to the CSpect SD image and edit Screens and Blocks.",
   "version": "0.1.0",
   "publisher": "mattsteeldue",
   "license": "MIT",
   "icon": "images/icon.png",
-  "repository": { "type": "git", "url": "https://github.com/mattsteeldue/vscode-vforth" },
-  "engines": { "vscode": "^1.75.0" },
-  "categories": ["Programming Languages"],
+  "keywords": [
+    "forth",
+    "vforth",
+    "zx spectrum next",
+    "zx next",
+    "cspect",
+    "retro",
+    "z80"
+  ],
+  "homepage": "https://github.com/mattsteeldue/vscode-vforth#readme",
+  "bugs": {
+    "url": "https://github.com/mattsteeldue/vscode-vforth/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mattsteeldue/vscode-vforth"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
   "main": "./extension.js",
   "activationEvents": [],
   "contributes": {
     "languages": [
       {
         "id": "vforth",
-        "aliases": ["vForth", "vforth"],
-        "extensions": [".f"],
+        "aliases": [
+          "vForth",
+          "vforth"
+        ],
+        "extensions": [
+          ".f"
+        ],
         "configuration": "./language-configuration.json"
       },
       {
         "id": "vforth-screen",
-        "aliases": ["vForth Screen"]
+        "aliases": [
+          "vForth Screen"
+        ]
       }
     ],
     "grammars": [
@@ -37,26 +64,59 @@
       }
     ],
     "semanticTokenTypes": [
-      { "id": "vforthLibrary", "superType": "function", "description": "Word provided by inc/ or lib/ (needs NEEDS)" },
-      { "id": "vforthLocal", "superType": "function", "description": "Word defined in the current file" }
+      {
+        "id": "vforthLibrary",
+        "superType": "function",
+        "description": "Word provided by inc/ or lib/ (needs NEEDS)"
+      },
+      {
+        "id": "vforthLocal",
+        "superType": "function",
+        "description": "Word defined in the current file"
+      }
     ],
     "semanticTokenScopes": [
       {
         "language": "vforth",
         "scopes": {
-          "vforthLibrary": ["support.class.vforth"],
-          "vforthLocal": ["entity.name.function.vforth"]
+          "vforthLibrary": [
+            "support.class.vforth"
+          ],
+          "vforthLocal": [
+            "entity.name.function.vforth"
+          ]
         }
       }
     ],
     "commands": [
-      { "command": "vforth.reloadIndex", "title": "vForth: Reload index" },
-      { "command": "vforth.showLog", "title": "vForth: Show log" },
-      { "command": "vforth.pushToSD", "title": "vForth: Push file to SD image" },
-      { "command": "vforth.openScreen", "title": "vForth: Open Screen #" },
-      { "command": "vforth.openBlock", "title": "vForth: Open Block # (hex)" },
-      { "command": "vforth.nextScreenOrBlock", "title": "vForth: Next Screen/Block" },
-      { "command": "vforth.previousScreenOrBlock", "title": "vForth: Previous Screen/Block" }
+      {
+        "command": "vforth.reloadIndex",
+        "title": "vForth: Reload index"
+      },
+      {
+        "command": "vforth.showLog",
+        "title": "vForth: Show log"
+      },
+      {
+        "command": "vforth.pushToSD",
+        "title": "vForth: Push file to SD image"
+      },
+      {
+        "command": "vforth.openScreen",
+        "title": "vForth: Open Screen #"
+      },
+      {
+        "command": "vforth.openBlock",
+        "title": "vForth: Open Block # (hex)"
+      },
+      {
+        "command": "vforth.nextScreenOrBlock",
+        "title": "vForth: Next Screen/Block"
+      },
+      {
+        "command": "vforth.previousScreenOrBlock",
+        "title": "vForth: Previous Screen/Block"
+      }
     ],
     "keybindings": [
       {
@@ -70,48 +130,76 @@
         "when": "resourceScheme == vforth-screen || resourceScheme == vforth-block"
       }
     ],
-    "configuration": {
-      "title": "vForth",
-      "properties": {
-        "vforth.root": {
-          "type": "string",
-          "default": "",
-          "description": "vForth root directory (the one holding src/F18e.f, inc/, lib/, help/). Empty: auto-detect in the workspace."
-        },
-        "vforth.preloaded": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": [],
-          "description": "NEEDS arguments assumed already executed before any file is loaded. Empty by default: AUTOEXEC is self-cleaning (it MARKERs away what it defines for the splash screen), so nothing from it persists in the dictionary. Set this only if your own workflow loads extra utilities by hand first."
-        },
-        "vforth.diagnostics.enable": {
-          "type": "boolean",
-          "default": true,
-          "description": "Report words that require NEEDS, unresolvable NEEDS/INCLUDE and non-ASCII characters."
-        },
-        "vforth.sdImage": {
-          "type": "string",
-          "default": "",
-          "description": "Path to the CSpect SD card image (.img) used by 'vForth: Push file to SD image'."
-        },
-        "vforth.hdfmonkeyPath": {
-          "type": "string",
-          "default": "hdfmonkey",
-          "description": "Path to the hdfmonkey executable. hdfmonkey writes into the HDF/FAT image directly, so it works without an exclusive lock (unlike mounting the image with imdisk), i.e. while CSpect is running."
-        },
-        "vforth.sdDestPrefix": {
-          "type": "string",
-          "default": "",
-          "description": "Prefix prepended, inside the SD image, to a file's path relative to vforth.root (e.g. \"tools/vForth\" if that is where your SD mirrors the project). Empty: the path relative to vforth.root is used as-is."
-        },
-        "vforth.sdExcludeTopDirs": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": ["dev", "doc", "dot", "emu", "forum", "project", "prompts", "tools", "version"],
-          "description": "Top-level directories (relative to vforth.root) not normally deployed to the SD card. Pushing a file under one of these asks for confirmation first."
+    "configuration": [
+      {
+        "title": "vForth: Language",
+        "properties": {
+          "vforth.root": {
+            "type": "string",
+            "default": "",
+            "order": 0,
+            "markdownDescription": "**vForth root folder** — the folder holding `src/F18e.f`, `inc/`, `lib/` and `help/`. Leave empty to auto-detect it in the workspace.\n\nExample: `C:\\Zx\\Forth\\F18\tools\u000bForth\\`"
+          },
+          "vforth.preloaded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "order": 1,
+            "markdownDescription": "**Words already loaded** — `NEEDS` arguments assumed already executed before any file is loaded. Empty by default: AUTOEXEC is self-cleaning (it MARKERs away what it defines for the splash screen), so nothing from it persists in the dictionary. Set this only if your own workflow loads extra utilities by hand first."
+          },
+          "vforth.diagnostics.enable": {
+            "type": "boolean",
+            "default": true,
+            "order": 2,
+            "markdownDescription": "**Enable diagnostics** — report words that require `NEEDS`, unresolvable `NEEDS`/`INCLUDE` and non-ASCII characters."
+          }
+        }
+      },
+      {
+        "title": "vForth: SD image",
+        "properties": {
+          "vforth.sdImage": {
+            "type": "string",
+            "default": "",
+            "order": 0,
+            "markdownDescription": "**SD card image file** — the CSpect `.img` file (not `!Blocks-64.bin`, not a file inside the image). Used by the SD tools: push file, Screens, Blocks.\n\nExample: `C:\\Zx\\CSpect\\cspect-next-2gb.img`"
+          },
+          "vforth.hdfmonkeyPath": {
+            "type": "string",
+            "default": "hdfmonkey",
+            "order": 1,
+            "markdownDescription": "**hdfmonkey executable** — full path to `hdfmonkey`, or just `hdfmonkey` if it is on `PATH`. It writes into the HDF/FAT image directly, so it works while CSpect is running.\n\nExample: `C:\\Zx\\CSpect\\hdfmonkey.exe`"
+          },
+          "vforth.sdDestPrefix": {
+            "type": "string",
+            "default": "",
+            "order": 2,
+            "markdownDescription": "**Project folder inside the SD image** — where the vForth root is mirrored on the SD card. It is prepended to a file's path relative to the vForth root. Leave empty to use that relative path as-is.\n\nExample: `/tools/vforth`"
+          },
+          "vforth.sdExcludeTopDirs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "dev",
+              "doc",
+              "dot",
+              "emu",
+              "forum",
+              "project",
+              "prompts",
+              "tools",
+              "version"
+            ],
+            "order": 3,
+            "markdownDescription": "**Folders not deployed to the SD card** — top-level folders (relative to the vForth root) that are not normally copied to the SD card. Pushing a file from one of them asks for confirmation first."
+          }
         }
       }
-    },
+    ],
     "configurationDefaults": {
       "[vforth]": {
         "files.encoding": "utf8",
@@ -120,7 +208,9 @@
         "editor.semanticHighlighting.enabled": true
       },
       "[vforth-screen]": {
-        "editor.rulers": [64],
+        "editor.rulers": [
+          64
+        ],
         "editor.wordWrap": "off"
       }
     }

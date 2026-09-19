@@ -81,7 +81,7 @@ image tools, not for language support:
 The author's setup, as it appears in `settings.json`:
 
 ```json
-"vforth.root": "C:\\Zx\\Forth\\F18\\tools\\vForth",
+"vforth.root": "C:\\Zx\\Forth\\F18\\tools\\vForth\\",
 "vforth.sdImage": "C:\\Zx\\CSpect\\cspect-next-2gb.img",
 "vforth.hdfmonkeyPath": "C:\\Zx\\CSpect\\hdfmonkey.exe",
 "vforth.sdDestPrefix": "/tools/vforth"

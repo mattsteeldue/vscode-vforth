@@ -289,6 +289,47 @@ async function pushToSD() {
   }
 }
 
+// Inverse of pushToSD: fetches the SD image's copy of the active file (same
+// relative path, same vforth.sdDestPrefix) and overwrites the local one.
+async function pullFromSD() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) { vscode.window.showWarningMessage('vForth: no active file to pick.'); return; }
+  if (!model) { vscode.window.showWarningMessage('vForth root not found; set "vforth.root".'); return; }
+
+  const doc = editor.document;
+  if (doc.uri.scheme !== 'file') { vscode.window.showWarningMessage('vForth: active file is not a local file.'); return; }
+  const rel = path.relative(model.root, doc.uri.fsPath).split(path.sep).join('/');
+  if (rel.startsWith('..')) { vscode.window.showWarningMessage('vForth: active file is not under vforth.root.'); return; }
+
+  const { sdImage, hdfmonkeyPath, destPrefix } = sdSettings();
+  if (!sdImage) { vscode.window.showErrorMessage('vForth: set "vforth.sdImage" to the CSpect SD image (.img) path first.'); return; }
+
+  const srcPath = sdPath(destPrefix, rel);
+  const tmp = path.join(os.tmpdir(), 'vforth-pick-scratch.bin');
+  try {
+    try { fs.unlinkSync(tmp); } catch (e) { /* no previous scratch file */ }
+    await run(hdfmonkeyPath, ['get', sdImage, srcPath, tmp]);
+    const incoming = fs.readFileSync(tmp);
+    if (!doc.isDirty && fs.readFileSync(doc.uri.fsPath).equals(incoming)) {
+      vscode.window.setStatusBarMessage(`vForth: ${rel} is identical on the SD image`, 4000);
+      return;
+    }
+    const choice = await vscode.window.showWarningMessage(
+      `vForth: overwrite "${rel}" with the copy on the SD image?` + (doc.isDirty ? ' Unsaved changes will be lost.' : ''),
+      { modal: true }, 'Overwrite');
+    if (choice !== 'Overwrite') return;
+    if (doc.isDirty) await vscode.commands.executeCommand('workbench.action.files.revert');
+    fs.writeFileSync(doc.uri.fsPath, incoming);
+    log(`pick ${srcPath} -> ${rel}: ok`);
+    vscode.window.setStatusBarMessage(`vForth: picked ${rel} from SD image`, 4000);
+  } catch (err) {
+    log(`pick ${srcPath} -> ${rel}: FAILED\n${err.stderr || err.message}`);
+    vscode.window.showErrorMessage(`vForth: pick failed (${err.message}). See "vForth: Show log".`);
+  } finally {
+    try { fs.unlinkSync(tmp); } catch (e) { /* already gone */ }
+  }
+}
+
 // ------------------------------------------------------------------ screens
 // A Screen (1024 bytes = 16 lines x 64 chars, 2 Blocks) inside !Blocks-64.bin
 // opened as an ordinary VS Code text document, backed by a virtual
@@ -586,6 +627,7 @@ async function activate(context) {
     }),
     vscode.commands.registerCommand('vforth.showLog', () => output.show()),
     vscode.commands.registerCommand('vforth.pushToSD', pushToSD),
+    vscode.commands.registerCommand('vforth.pullFromSD', pullFromSD),
     vscode.commands.registerCommand('vforth.openScreen', () => openScreen()),
     vscode.commands.registerCommand('vforth.openBlock', () => openBlock()),
     vscode.commands.registerCommand('vforth.nextScreenOrBlock', () => stepScreenOrBlock(1)),

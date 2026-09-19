@@ -41,7 +41,8 @@ The extension works on a vForth source tree (the one holding `src/F18e.f`,
 
 | Command | What it does |
 |---|---|
-| *vForth: Push file to SD image* | Writes the active file into the SD image. |
+| *vForth: Send file to SD image* | Writes the active file into the SD image. |
+| *vForth: Pick file from SD image* | Overwrites the active file with its copy from the SD image. |
 | *vForth: Open Screen #* | Edits a Screen (16 x 64) of `!Blocks-64.bin` as text. |
 | *vForth: Open Block # (hex)* | Edits a Block (512 bytes) of `!Blocks-64.bin` in a hex editor. |
 | *vForth: Next Screen/Block* (`Ctrl+Shift+F8`) | Opens the next Screen or Block. |
@@ -59,7 +60,7 @@ itself (plain JavaScript). Two external tools are needed for the CSpect SD
 image tools, not for language support:
 
 - [`hdfmonkey`](https://github.com/simonowen/hdfmonkey) — required by
-  *Push file to SD image*, *Open Screen #* and *Open Block # (hex)*. Set
+  *Send file to SD image*, *Open Screen #* and *Open Block # (hex)*. Set
   `vforth.hdfmonkeyPath` to its executable unless it is already on `PATH`.
 - [Hex Editor](https://marketplace.visualstudio.com/items?itemName=ms-vscode.hexeditor)
   (`ms-vscode.hexeditor`) — required only by *Open Block # (hex)*, which
@@ -121,7 +122,7 @@ Colours can be tuned with `editor.semanticTokenColorCustomizations`:
 }
 ```
 
-## Push file to SD image
+## Send file to SD image
 
 Writes the active file into the SD image with `hdfmonkey put`, so an edited
 `.f` file can be tested without leaving VS Code. Unlike mounting the image
@@ -136,6 +137,15 @@ work at any time, CSpect open or closed, and a running vForth session sees a
 pushed file immediately (`NEEDS`/`INCLUDE` right after the push). The
 `NEEDS`/`INCLUDE` itself stays manual.
 
+## Pick file from SD image
+
+The inverse of *Send file to SD image*: fetches the SD image's copy of the
+active file (same relative path, same `vforth.sdDestPrefix`) with
+`hdfmonkey get` and overwrites the local file. It asks for confirmation
+first, warning that unsaved changes are lost, and does nothing if the two
+copies are identical. Useful to bring back a file edited inside vForth on the
+Spectrum side.
+
 ## Open Screen #
 
 Opens a Screen (1024 bytes = 16 lines x 64 columns, 2 Blocks) from
@@ -145,6 +155,22 @@ validates all 16 lines (max 64 chars each, 7-bit ASCII, no NUL: a NUL
 silently aborts `LOAD`) and only if valid patches the 1024 bytes back into
 `!Blocks-64.bin`, leaving the rest of the block store untouched. On any
 violation it reports the line and column instead of writing anything.
+
+**Where the data lives.** A Screen is never a file on your PC: the only
+persistent copy is inside `!Blocks-64.bin` on the SD image, and there is no
+`nnn.f` counterpart in your workspace.
+
+- *Open*: `hdfmonkey get` copies `!Blocks-64.bin` out of the image into a
+  scratch file in the system temp folder; the extension decodes the 1024 bytes
+  of the Screen from it and shows them as text.
+- *Save*: the text is validated, the 1024 bytes are patched into a fresh
+  scratch copy, and `hdfmonkey put` writes the whole file back into the image.
+- The scratch file (`vforth-blocks-scratch.bin` in the temp folder) is only a
+  transit area, overwritten on every open/save and never read back as a source
+  of truth; it can be deleted at any time.
+
+To move source between a Screen and a local `.f` file, copy and paste the text
+by hand: the extension does not convert between them.
 
 A ruler at column 64 and a border under line 16 mark the Screen's boundaries;
 syntax highlighting matches `.f` files, since a Screen is ordinary vForth
@@ -167,6 +193,10 @@ decoding or ASCII validation: any byte value is valid, so this is the way to
 inspect and edit a Block that is not vForth source (a Layer 2 image, a sprite
 table, a `PERSISTENCE` snapshot, the error-message table). Saving requires the
 byte count to stay exactly 512: the size of the file must never change.
+
+The data flow is the same as for Screens: nothing is stored on your PC beyond
+the temporary scratch copy of `!Blocks-64.bin`; open is `hdfmonkey get`, save
+patches the 512 bytes and writes the whole file back with `hdfmonkey put`.
 
 ## Next/Previous Screen or Block
 

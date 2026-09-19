@@ -99,7 +99,11 @@
       },
       {
         "command": "vforth.pushToSD",
-        "title": "vForth: Push file to SD image"
+        "title": "vForth: Send file to SD image"
+      },
+      {
+        "command": "vforth.pullFromSD",
+        "title": "vForth: Pick file from SD image"
       },
       {
         "command": "vforth.openScreen",

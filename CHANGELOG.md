@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.2] - 2026-09-20
+
+- Hover: `:` and `\` now show `help/colon.txt` and `help/bslash.txt` instead of the shared `help/_.txt`.
+
 ## [0.1.1] - 2026-09-19
 
 - "Push file to SD image" renamed "Send file to SD image" (command id unchanged).

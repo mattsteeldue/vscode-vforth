@@ -163,7 +163,33 @@ function appendHelp(md, name) {
   if (!text) return false;
   md.appendMarkdown(`\n\n*help/${path.basename(model.helpFile(name))}*`);
   md.appendCodeblock(text.replace(/\s+$/, ''), 'text');
+  appendSeeAlso(md, text);
   return true;
+}
+
+// "See also A, B, C." may wrap across lines; it ends at the first period
+// followed by whitespace or end of text. Words with a known definition
+// become links to vforth.gotoWord (a code block cannot hold links).
+function appendSeeAlso(md, text) {
+  const m = /See also\s+([\s\S]*?)(?:\.(?:\s|$)|$)/.exec(text);
+  if (!m) return;
+  const names = m[1].split(/,|\s+and\s+/).map(s => s.trim()).filter(Boolean);
+  const parts = names.map(n => {
+    if (!model.definitions(n, null, '', 0).length) return `\`${n}\``;
+    const args = encodeURIComponent(JSON.stringify([n]));
+    return `[\`${n}\`](command:vforth.gotoWord?${args} "Go to definition")`;
+  });
+  if (!parts.length) return;
+  md.isTrusted = { enabledCommands: ['vforth.gotoWord'] };
+  md.appendMarkdown(`\n\nSee also: ${parts.join(', ')}`);
+}
+
+async function gotoWord(name) {
+  const d = model.definitions(String(name), null, '', 0)[0];
+  if (!d) return;
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(d.file));
+  const r = new vscode.Range(d.line, d.start || 0, d.line, d.end || 0);
+  await vscode.window.showTextDocument(doc, { selection: r });
 }
 
 const definitionProvider = {
@@ -626,6 +652,7 @@ async function activate(context) {
       vscode.window.showInformationMessage(model ? `vForth index reloaded (${model.root})` : 'vForth root not found');
     }),
     vscode.commands.registerCommand('vforth.showLog', () => output.show()),
+    vscode.commands.registerCommand('vforth.gotoWord', gotoWord),
     vscode.commands.registerCommand('vforth.pushToSD', pushToSD),
     vscode.commands.registerCommand('vforth.pullFromSD', pullFromSD),
     vscode.commands.registerCommand('vforth.openScreen', () => openScreen()),

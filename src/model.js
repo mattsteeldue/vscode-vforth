@@ -203,7 +203,12 @@ class Model {
     return null;
   }
 
-  helpFile(name) { return this.help.find(mapFn(name) + '.txt'); }
+  // MAP-FN maps both ":" and "\" to "_", so they would share help/_.txt;
+  // these two words alone have dedicated help files.
+  helpFile(name) {
+    const special = { ':': 'colon', '\\': 'bslash' }[name];
+    return this.help.find((special || mapFn(name)) + '.txt');
+  }
 
   helpText(name) {
     const f = this.helpFile(name);

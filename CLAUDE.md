@@ -98,6 +98,20 @@ Three-layer split, deliberately decoupled from VS Code:
   session sees a pushed file immediately — verified against the real image
   and a live CSpect (a REMOUNT requirement was first suspected, then
   disproved by controlled negative/positive tests, see project memory).
+  Also owns `vforth.runInCSpect` (phase 4): `sendActiveFile()` (shared with
+  `pushToSD`), then copies the user's `/nextzxos/autoexec.bas` to
+  `/nextzxos/autoexec-vforth.bas` inside the image (kept if already there:
+  a leftover is the real original, never back up our own file) and replaces
+  `autoexec.bas` with a generated program (`makeAutoexec()`: +3DOS header,
+  format copied from the user's real file; tokens `LAYER`=0x9C, `PAPER`=0xDA,
+  `STOP`=0xE2, numbers followed by the hidden 5-byte form): colours, `.cp --force`
+  original back FIRST, `.cd /<destPrefix>` (vForth opens `!Blocks-64.bin`,
+  `inc`, `lib` relative to the cwd), `.vforth <rel path>`, `STOP`. It then
+  spawns `CSpect.exe` detached without waiting (`vforth.cspectPath`/
+  `cspectArgs`; not a `.lnk`/`.bat`). The restore runs in the emulated
+  machine, not on process exit, because vForth's BYE can hang CSpect and
+  several instances must be possible. `vforth.restoreAutoexec` is the manual
+  fallback. Typical use: launching a single tutorial.
   Also owns `vforth.openScreen` (phase 3): opens a Screen (1024 bytes = 16
   lines x 64 cols, 2 Blocks) from `!Blocks-64.bin` as an ordinary text
   document, through a virtual `FileSystemProvider` on the `vforth-screen`

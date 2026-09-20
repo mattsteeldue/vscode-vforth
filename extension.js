@@ -7,7 +7,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const { Model, CORE_SOURCE } = require('./src/model');
 
 const LANG = 'vforth';
@@ -280,18 +280,20 @@ function run(cmd, args) {
   });
 }
 
-async function pushToSD() {
+// Sends the active file to the SD image. Returns {rel, destPath} on success,
+// null if nothing was sent (warning shown, cancelled, or failed).
+async function sendActiveFile() {
   const editor = vscode.window.activeTextEditor;
-  if (!editor) { vscode.window.showWarningMessage('vForth: no active file to push.'); return; }
-  if (!model) { vscode.window.showWarningMessage('vForth root not found; set "vforth.root".'); return; }
+  if (!editor) { vscode.window.showWarningMessage('vForth: no active file to push.'); return null; }
+  if (!model) { vscode.window.showWarningMessage('vForth root not found; set "vforth.root".'); return null; }
 
   const doc = editor.document;
-  if (doc.uri.scheme !== 'file') { vscode.window.showWarningMessage('vForth: active file is not a local file.'); return; }
+  if (doc.uri.scheme !== 'file') { vscode.window.showWarningMessage('vForth: active file is not a local file.'); return null; }
   const rel = path.relative(model.root, doc.uri.fsPath).split(path.sep).join('/');
-  if (rel.startsWith('..')) { vscode.window.showWarningMessage('vForth: active file is not under vforth.root.'); return; }
+  if (rel.startsWith('..')) { vscode.window.showWarningMessage('vForth: active file is not under vforth.root.'); return null; }
 
   const { sdImage, hdfmonkeyPath, destPrefix } = sdSettings();
-  if (!sdImage) { vscode.window.showErrorMessage('vForth: set "vforth.sdImage" to the CSpect SD image (.img) path first.'); return; }
+  if (!sdImage) { vscode.window.showErrorMessage('vForth: set "vforth.sdImage" to the CSpect SD image (.img) path first.'); return null; }
   const excludeTopDirs = config().get('sdExcludeTopDirs') || [];
 
   const top = rel.split('/')[0];
@@ -299,7 +301,7 @@ async function pushToSD() {
     const choice = await vscode.window.showWarningMessage(
       `vForth: "${top}/" is not normally deployed to the SD card (see vforth.sdExcludeTopDirs). Push "${rel}" anyway?`,
       { modal: true }, 'Push anyway');
-    if (choice !== 'Push anyway') return;
+    if (choice !== 'Push anyway') return null;
   }
 
   if (doc.isDirty) await doc.save();
@@ -309,11 +311,16 @@ async function pushToSD() {
     const { stdout } = await run(hdfmonkeyPath, ['put', sdImage, doc.uri.fsPath, destPath]);
     log(`push ${rel} -> ${destPath}: ok${stdout ? '\n' + stdout : ''}`);
     vscode.window.setStatusBarMessage(`vForth: pushed ${rel} to SD image`, 4000);
+    return { rel, destPath };
   } catch (err) {
     log(`push ${rel} -> ${destPath}: FAILED\n${err.stderr || err.message}`);
     vscode.window.showErrorMessage(`vForth: push failed (${err.message}). See "vForth: Show log".`);
+    return null;
   }
 }
+
+async function pushToSD() { await sendActiveFile(); }
+
 
 // Inverse of pushToSD: fetches the SD image's copy of the active file (same
 // relative path, same vforth.sdDestPrefix) and overwrites the local one.
@@ -354,6 +361,137 @@ async function pullFromSD() {
   } finally {
     try { fs.unlinkSync(tmp); } catch (e) { /* already gone */ }
   }
+}
+
+// ------------------------------------------------------------------ run
+// "Run file in CSpect": Send the active file, swap /nextzxos/autoexec.bas on
+// the SD image for a short program, and start CSpect without waiting for it.
+// The user's own autoexec.bas is first copied inside the image to
+// /nextzxos/autoexec-vforth.bas, and the generated program puts it back as
+// its very first action (before .vforth runs), so the swap lasts only the
+// few seconds of boot and does not depend on how vForth exits (BYE) or on
+// when, or whether, CSpect is closed. Several instances on different files
+// are therefore possible. Same idea as the NextBASIC extension, but the
+// restore is done by the emulated machine instead of by VS Code.
+// Typical use: launch a single tutorial (or demo) file.
+const AUTOEXEC = '/nextzxos/autoexec.bas';
+const AUTOEXEC_SAVED = '/nextzxos/autoexec-vforth.bas';
+let storageDir = null;
+
+// NextBASIC number: digits, then the hidden 5-byte form the interpreter uses.
+function bnum(n) { return `${n}\x0e\x00\x00${String.fromCharCode(n & 255, n >> 8)}\x00`; }
+
+// +3DOS header (128 bytes) + BASIC lines 10, 20, ... (autostart line 10).
+function makeAutoexec(texts) {
+  const line = Buffer.concat(texts.map((text, i) => {
+    const t = Buffer.from(text, 'latin1');
+    return Buffer.concat([Buffer.from([0, (i + 1) * 10, (t.length + 1) & 255, (t.length + 1) >> 8]), t, Buffer.from([0x0d])]);
+  }));
+  const h = Buffer.alloc(128);
+  h.write('PLUS3DOS', 0, 'latin1');
+  h[8] = 0x1a; h[9] = 1; h[10] = 0;
+  h.writeUInt32LE(128 + line.length, 11);
+  h[15] = 0;                                   // BASIC program
+  h.writeUInt16LE(line.length, 16);
+  h.writeUInt16LE(10, 18);                     // autostart line
+  h.writeUInt16LE(line.length, 20);            // offset to variables
+  let sum = 0;
+  for (let i = 0; i < 127; i++) sum += h[i];
+  h[127] = sum & 255;
+  return Buffer.concat([h, line]);
+}
+
+// Splits on spaces, keeping "double quoted" parts together.
+function splitArgs(s) {
+  const out = [];
+  const re = /"([^"]*)"|(\S+)/g;
+  let m;
+  while ((m = re.exec(s))) out.push(m[1] !== undefined ? m[1] : m[2]);
+  return out;
+}
+
+async function sdHas(sdImage, hdfmonkeyPath, file) {
+  try {
+    await run(hdfmonkeyPath, ['get', sdImage, file, path.join(storageDir, 'probe.tmp')]);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Puts autoexec-vforth.bas back as autoexec.bas from the host side (used when
+// CSpect could not be started, or by the "Restore autoexec.bas" command).
+async function restoreAutoexec() {
+  const { sdImage, hdfmonkeyPath } = sdSettings();
+  if (!sdImage) { vscode.window.showErrorMessage('vForth: set "vforth.sdImage" to the CSpect SD image (.img) path first.'); return; }
+  fs.mkdirSync(storageDir, { recursive: true });
+  const tmp = path.join(storageDir, 'autoexec.restore');
+  try {
+    await run(hdfmonkeyPath, ['get', sdImage, AUTOEXEC_SAVED, tmp]);
+  } catch (e) {
+    vscode.window.showInformationMessage(`vForth: nothing to restore (${AUTOEXEC_SAVED} not found).`);
+    return;
+  }
+  try {
+    await run(hdfmonkeyPath, ['put', sdImage, tmp, AUTOEXEC]);
+    await run(hdfmonkeyPath, ['rm', sdImage, AUTOEXEC_SAVED]);
+    log('autoexec.bas restored');
+    vscode.window.setStatusBarMessage('vForth: autoexec.bas restored', 4000);
+  } catch (err) {
+    log(`restore autoexec.bas: FAILED\n${err.stderr || err.message}`);
+    vscode.window.showErrorMessage(`vForth: could not restore autoexec.bas (${err.message}). See "vForth: Show log".`);
+  }
+}
+
+async function runInCSpect() {
+  const { sdImage, hdfmonkeyPath, destPrefix } = sdSettings();
+  const cspectPath = (config().get('cspectPath') || '').trim();
+  if (!sdImage) { vscode.window.showErrorMessage('vForth: set "vforth.sdImage" to the CSpect SD image (.img) path first.'); return; }
+  if (!cspectPath) { vscode.window.showErrorMessage('vForth: set "vforth.cspectPath" to CSpect.exe first.'); return; }
+
+  const sent = await sendActiveFile();
+  if (!sent) return;
+
+  fs.mkdirSync(storageDir, { recursive: true });
+  const orig = path.join(storageDir, 'autoexec.orig');
+  const gen = path.join(storageDir, 'autoexec.gen');
+  try {
+    // A leftover autoexec-vforth.bas (an earlier run that did not get to restore)
+    // is the real original: keep it, never back up our own generated file.
+    let hadOriginal = await sdHas(sdImage, hdfmonkeyPath, AUTOEXEC_SAVED);
+    if (!hadOriginal && await sdHas(sdImage, hdfmonkeyPath, AUTOEXEC)) {
+      await run(hdfmonkeyPath, ['get', sdImage, AUTOEXEC, orig]);
+      await run(hdfmonkeyPath, ['put', sdImage, orig, AUTOEXEC_SAVED]);
+      hadOriginal = true;
+    }
+    // vForth opens !Blocks-64.bin, inc/, lib/ and the file itself relative to the
+    // current directory, so go to the project folder first and pass a relative path.
+    const lines = [
+      `\x9c${bnum(1)},${bnum(2)}:\xda${bnum(0)}:\xeaBLACK`,   // LAYER 1,2 : PAPER 0 : REM BLACK
+      hadOriginal ? `.cp --force ${AUTOEXEC_SAVED} ${AUTOEXEC}` : `.rm ${AUTOEXEC}`
+    ];
+    if (destPrefix) lines.push(`.cd /${destPrefix}`);
+    lines.push(`.vforth ${sent.rel}`);
+    lines.push('\xe2');                              // STOP (token): experiment, BYE hangs CSpect
+    fs.writeFileSync(gen, makeAutoexec(lines));
+    await run(hdfmonkeyPath, ['put', sdImage, gen, AUTOEXEC]);
+  } catch (err) {
+    log(`run: autoexec swap FAILED\n${err.stderr || err.message}`);
+    vscode.window.showErrorMessage(`vForth: could not prepare autoexec.bas (${err.message}). See "vForth: Show log".`);
+    return;
+  }
+
+  const args = splitArgs(config().get('cspectArgs') || '');
+  if (!args.some(a => /^-mmc=/i.test(a))) args.push(`-mmc=${sdImage}`);
+  log(`run: ${cspectPath} ${args.join(' ')}`);
+  const child = spawn(cspectPath, args, { cwd: path.dirname(cspectPath), stdio: 'ignore', detached: true });
+  child.on('error', async err => {
+    log(`run: CSpect FAILED to start: ${err.message}`);
+    vscode.window.showErrorMessage(`vForth: could not start CSpect (${err.message}).`);
+    await restoreAutoexec();
+  });
+  child.unref();
+  vscode.window.setStatusBarMessage(`vForth: running ${sent.rel} in CSpect`, 4000);
 }
 
 // ------------------------------------------------------------------ screens
@@ -625,6 +763,7 @@ async function stepScreenOrBlock(delta) {
 // ------------------------------------------------------------------ activation
 async function activate(context) {
   output = vscode.window.createOutputChannel('vForth');
+  storageDir = context.globalStorageUri.fsPath;
   diagnostics = vscode.languages.createDiagnosticCollection('vforth');
   context.subscriptions.push(output, diagnostics, semanticChanged);
 
@@ -655,6 +794,8 @@ async function activate(context) {
     vscode.commands.registerCommand('vforth.gotoWord', gotoWord),
     vscode.commands.registerCommand('vforth.pushToSD', pushToSD),
     vscode.commands.registerCommand('vforth.pullFromSD', pullFromSD),
+    vscode.commands.registerCommand('vforth.runInCSpect', runInCSpect),
+    vscode.commands.registerCommand('vforth.restoreAutoexec', restoreAutoexec),
     vscode.commands.registerCommand('vforth.openScreen', () => openScreen()),
     vscode.commands.registerCommand('vforth.openBlock', () => openBlock()),
     vscode.commands.registerCommand('vforth.nextScreenOrBlock', () => stepScreenOrBlock(1)),

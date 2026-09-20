@@ -2,7 +2,7 @@
   "name": "vforth",
   "displayName": "vForth",
   "description": "vForth (Forth for the ZX Spectrum Next): syntax, NEEDS diagnostics, hover help, go to definition; push files to the CSpect SD image and edit Screens and Blocks.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "mattsteeldue",
   "author": "Matteo Vitturi",
   "license": "MIT",
@@ -107,6 +107,14 @@
         "title": "vForth: Pick file from SD image"
       },
       {
+        "command": "vforth.runInCSpect",
+        "title": "vForth: Run file in CSpect"
+      },
+      {
+        "command": "vforth.restoreAutoexec",
+        "title": "vForth: Restore autoexec.bas in SD image"
+      },
+      {
         "command": "vforth.openScreen",
         "title": "vForth: Open Screen #"
       },
@@ -159,6 +167,23 @@
             "default": true,
             "order": 2,
             "markdownDescription": "**Enable diagnostics** — report words that require `NEEDS`, unresolvable `NEEDS`/`INCLUDE` and non-ASCII characters."
+          }
+        }
+      },
+      {
+        "title": "vForth: CSpect",
+        "properties": {
+          "vforth.cspectPath": {
+            "type": "string",
+            "default": "",
+            "order": 0,
+            "markdownDescription": "**CSpect executable** — full path to `CSpect.exe` (not a shortcut or `.bat`). Used by *Run file in CSpect*, which sends the active file, starts CSpect and makes it run that file (typically a single tutorial or demo).\n\nExample: `C:\\Zx\\CSpect\\CSpect.exe`"
+          },
+          "vforth.cspectArgs": {
+            "type": "string",
+            "default": "-esc -w4 -zxnext -nextrom",
+            "order": 1,
+            "markdownDescription": "**CSpect switches** — all command-line switches, as one string. `-mmc=<vforth.sdImage>` is appended if you do not give `-mmc=` yourself. CSpect starts in its own folder.\n\nExample: `-esc -w4 -zxnext -nextrom -tv`"
           }
         }
       },

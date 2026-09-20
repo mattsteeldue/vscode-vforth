@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.3] - 2026-09-20
+
+- New `vforth.runInCSpect` (Run file in CSpect): sends the active file, swaps `/nextzxos/autoexec.bas` for a program that sets the colours, restores the original (kept as `/nextzxos/autoexec-vforth.bas` in the image) and runs the file with `.cd` + `.vforth`; CSpect is started without waiting for it. New command `vforth.restoreAutoexec`. Typical use: launching a single tutorial or demo. New settings `vforth.cspectPath` and `vforth.cspectArgs`.
+
 ## [0.1.2] - 2026-09-20
 
 - Hover: `:` and `\` now show `help/colon.txt` and `help/bslash.txt` instead of the shared `help/_.txt`.

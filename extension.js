@@ -101,6 +101,31 @@ function refreshDiagnostics(doc) {
   }));
 }
 
+// Quick fixes carried by the analysis diagnostics (d.fix).
+const codeActionProvider = {
+  provideCodeActions(doc, range) {
+    const a = analysisOf(doc);
+    if (!a || excluded(doc)) return [];
+    const out = [];
+    for (const d of a.diags) {
+      if (!d.fix) continue;
+      const r = new vscode.Range(d.tok.line, d.tok.start, d.tok.line, d.tok.end);
+      if (!r.intersection(range)) continue;
+      const act = new vscode.CodeAction(d.fix.title, vscode.CodeActionKind.QuickFix);
+      act.edit = new vscode.WorkspaceEdit();
+      for (const e of d.fix.edits) {
+        act.edit.replace(doc.uri, new vscode.Range(e.line, e.start, e.line, e.end), e.text);
+      }
+      const diag = new vscode.Diagnostic(r, d.message, SEVERITY[d.severity]);
+      diag.source = 'vForth';
+      act.diagnostics = [diag];
+      act.isPreferred = true;
+      out.push(act);
+    }
+    return out;
+  }
+};
+
 function refreshAll() {
   analyses.clear();
   for (const doc of vscode.workspace.textDocuments) refreshDiagnostics(doc);
@@ -774,7 +799,9 @@ async function activate(context) {
     vscode.languages.registerHoverProvider(sel, hoverProvider),
     vscode.languages.registerDefinitionProvider(sel, definitionProvider),
     vscode.languages.registerDocumentSymbolProvider(sel, symbolProvider),
-    vscode.languages.registerDocumentSemanticTokensProvider(sel, semanticProvider, LEGEND)
+    vscode.languages.registerDocumentSemanticTokensProvider(sel, semanticProvider, LEGEND),
+    vscode.languages.registerCodeActionsProvider(sel, codeActionProvider,
+      { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] })
   );
 
   let timer = null;

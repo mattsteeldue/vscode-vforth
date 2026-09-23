@@ -249,7 +249,8 @@ class Model {
 
     let prev = null;
     let base = 10;                               // tracked through HEX / DECIMAL
-    for (const t of tokens) {
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
       if (t.kind === 'defname') {
         const u = t.text.toUpperCase();
         if (!localDefs.has(u)) localDefs.set(u, []);
@@ -272,7 +273,9 @@ class Model {
         else if (u === 'DECIMAL') base = 10;
         else if (u === 'BINARY') base = 2;
         if (prev && prev.text.toUpperCase() === 'BASE' && u === '!') base = 10;
-        if (localDefs.has(u)) {
+        if (u === ')' && !localDefs.has(u) && !this.core.has(u) && !avail.has(u)) {
+          if (options.diagnostics !== false) diags.push(this.strayParen(tokens, i));
+        } else if (localDefs.has(u)) {
           semantic.push({ tok: t, type: 'local' });
         } else if (this.core.has(u) || isNumber(u, base)) {
           // grammar handles it
@@ -311,6 +314,23 @@ class Model {
       }
     }
     return { tokens, diags, localDefs, semantic };
+  }
+
+  // A ')' that is not a word: the ( or .( before it already ended at an
+  // earlier ')', e.g. ".( port $FE (keyboard) )". Right after a .( string
+  // that has no '"', offer to turn it into a ." string closed by this ')'.
+  strayParen(tokens, i) {
+    const t = tokens[i];
+    const d = { severity: 'error', tok: t,
+      message: 'Syntax error: unmatched ")"; the ( or .( before it already ended at the first ")"' };
+    const str = tokens[i - 1], dot = tokens[i - 2];
+    if (str && dot && str.kind === 'string' && str.line === t.line && dot.line === t.line &&
+        dot.kind === 'word' && dot.text === '.(' && !str.text.includes('"')) {
+      d.fix = { title: 'Use ." ... " instead of .( ... )',
+                edits: [{ line: dot.line, start: dot.start, end: dot.end, text: '."' },
+                        { line: t.line, start: t.start, end: t.end, text: '"' }] };
+    }
+    return d;
   }
 
   // Definition sites of `name` seen from a document analysis, best first.

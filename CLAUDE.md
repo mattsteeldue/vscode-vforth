@@ -85,7 +85,10 @@ Three-layer split, deliberately decoupled from VS Code:
   model when the target's core, `inc/`, `lib/`, or `help/` change; debounces
   re-analysis on text edits (300 ms) and model reloads (1 s). Holds an
   `analyses` cache keyed by document URI + version so repeated provider
-  calls for the same edit don't re-scan. Also owns `vforth.pushToSD`
+  calls for the same edit don't re-scan. Quick fixes are data, not code:
+  `analyze()` attaches `fix: {title, edits}` to a diagnostic (e.g. a stray
+  `)` after a `.(` string -> rewrite as `." ... "`) and a generic
+  `CodeActionProvider` turns it into a `WorkspaceEdit`. Also owns `vforth.pushToSD`
   (phase 2): a manual, single-file "push to the CSpect SD image" command
   that shells out to `hdfmonkey put` (`vforth.hdfmonkeyPath`, default on
   `PATH`) against `vforth.sdImage`. `hdfmonkey` writes into the HDF/FAT
